@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>中秋快乐</title>
+    <style>
+        @font-face {
+            font-family: 'CustomFont';
+            src: url('ty.ttf') format('truetype');
+        }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #000;
+            font-family: 'CustomFont', -apple-system, sans-serif;
+        }
+        #canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        /* 移动端首次点击启动界面（手机浏览器要求用户点击后才能播放音乐） */
+        #start-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 999;
+            cursor: pointer;
+            transition: opacity 0.8s ease;
+        }
+        .moon-icon {
+            font-size: 60px;
+            margin-bottom: 20px;
+            animation: pulse 2s infinite ease-in-out;
+        }
+        .start-text {
+            color: #FFF066;
+            font-size: 20px;
+            letter-spacing: 2px;
+            font-weight: bold;
+        }
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 0.8; }
+            50% { transform: scale(1.15); opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 启动引导遮罩 -->
+    <div id="start-overlay" onclick="startApp()">
+        <div class="moon-icon">🌕</div>
+        <div class="start-text">点击开启中秋祝福</div>
+    </div>
+
+    <!-- 核心画布与音频 -->
+    <canvas id="canvas"></canvas>
+    <!-- 建议在仓库放置 bgm.mp3，兼容性最好 -->
+    <audio id="bgm" src="bgm.mp3" loop preload="auto"></audio>
+
+    <script>
+        // ================= 配置参数 =================
+        const HEX_COLORS_RAIN = ["#6e9dad", "#b36879", "#ad9a50", "#afaaaa"];
+        const HEX_COLOR_HEART = "#f688a7";
+        const HEX_COLOR_CENTER_TEXT = "#FFF066";
+        const HEX_COLORS_SPARKS = ["#6e9dad", "#FF85A1", "#FFE066", "#FFFFFF"];
+        const HEX_COLOR_ENDING_TEXT = "#FFFFFF";
+
+        const MATRIX_CHARS = "中秋快乐皆如所愿阖家团圆岁岁平安月圆人圆";
+        const ENDING_TEXT = "此生风月愿同携\n岁岁晨昏共执蹄";
+
+        // 对应帧数控制（60帧 = 1秒）
+        const STATE_DURATIONS = [65, 65, 65, 90, 90, 110, 110, 3720, 312];
+
+        // ================= 初始化画布与参数 =================
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const bgm = document.getElementById('bgm');
+
+        let WIDTH, HEIGHT, scaleFactor = 1.0;
+
+        function resize() {
+            WIDTH = window.innerWidth;
+            HEIGHT = window.innerHeight;
+            canvas.width = WIDTH;
+            canvas.height = HEIGHT;
+            // 根据屏幕大小计算自适应缩放比
+            scaleFactor = Math.min(WIDTH / 1000, HEIGHT / 720);
+            if (scaleFactor < 0.6) scaleFactor = 0.6; // 手机屏幕保底缩放
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // 预生成小爱心纹理
+        function createHeartCanvas(size, color) {
+            const hCanvas = document.createElement('canvas');
+            hCanvas.width = size;
+            hCanvas.height = size;
+            const hCtx = hCanvas.getContext('2d');
+            hCtx.fillStyle = color;
+            const r = size / 4;
+            hCtx.beginPath();
+            hCtx.arc(r, r, r, Math.PI, 0, false);
+            hCtx.arc(3 * r, r, r, Math.PI, 0, false);
+            hCtx.lineTo(size / 2, size);
+            hCtx.closePath();
+            hCtx.fill();
+            return hCanvas;
+        }
+
+        const heartTexture = createHeartCanvas(12, HEX_COLOR_HEART);
+        const centerTextTexture = createHeartCanvas(9, HEX_COLOR_CENTER_TEXT);
+
+        // ================= 背景代码雨 =================
+        class MatrixRain {
+            constructor() {
+                this.fontSize = 18 * scaleFactor;
+                this.colSpacing = 16 * scaleFactor;
+                this.cols = Math.floor(WIDTH / this.colSpacing);
+                this.drops = Array.from({ length: this.cols }, () => Math.random() * -30);
+                this.speeds = Array.from({ length: this.cols }, () => 0.4 + Math.random() * 1.0);
+                this.colColors = Array.from({ length: this.cols }, () => HEX_COLORS_RAIN[Math.floor(Math.random() * HEX_COLORS_RAIN.length)]);
+            }
+
+            draw() {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+                ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+                ctx.font = `${this.fontSize}px 'CustomFont', sans-serif`;
+                for (let i = 0; i < this.cols; i++) {
+                    const char = MATRIX_CHARS[Math.floor(Math.random() * MATRIX_CHARS.length)];
+                    ctx.fillStyle = this.colColors[i];
+                    
+                    const x = i * this.colSpacing;
+                    const y = this.drops[i] * this.fontSize;
+                    ctx.fillText(char, x, y);
+
+                    if (y > HEIGHT && Math.random() > 0.96) {
+                        this.drops[i] = 0;
+                        this.colColors[i] = HEX_COLORS_RAIN[Math.floor(Math.random() * HEX_COLORS_RAIN.length)];
+                    }
+                    this.drops[i] += this.speeds[i] * 0.25;
+                }
+            }
+        }
+
+        // ================= 粒子取样工具 =================
+        function sampleText(text, fontSize, step) {
+            const offCanvas = document.createElement('canvas');
+            const offCtx = offCanvas.getContext('2d');
+            offCtx.font = `bold ${fontSize}px 'CustomFont', sans-serif`;
+            const metrics = offCtx.measureText(text);
+            const w = Math.ceil(metrics.width) + 20;
+            const h = Math.ceil(fontSize * 1.3);
+            offCanvas.width = w;
+            offCanvas.height = h;
+
+            offCtx.font = `bold ${fontSize}px 'CustomFont', sans-serif`;
+            offCtx.fillStyle = '#FFFFFF';
+            offCtx.fillText(text, 10, fontSize);
+
+            const imgData = offCtx.getImageData(0, 0, w, h).data;
+            const points = [];
+            for (let x = 0; x < w; x += step) {
+                for (let y = 0; y < h; y += step) {
+                    if (imgData[(y * w + x) * 4 + 3] > 128) {
+                        points.push({
+                            x: WIDTH / 2 - w / 2 + x,
+                            y: HEIGHT / 2 - h / 2 + y
+                        });
+                    }
+                }
+            }
+            return points;
+        }
+
+        function getHeartPoint(t, scale) {
+            const x = 16 * Math.pow(Math.sin(t), 3);
+            const y = -(13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t));
+            return {
+                x: WIDTH / 2 + x * scale * scaleFactor,
+                y: HEIGHT / 2 + y * scale * scaleFactor - 20 * scaleFactor
+            };
+        }
+
+        // ================= 爆发火花与主粒子系统 =================
+        class SuperParticleSystem {
+            constructor() {
+                this.particles = [];
+                this.sparks = [];
+                this.isHeartMode = false;
+                this.isEndingMode = false;
+                this.heartBorderPoints = [];
+                this.heartPulse = 0;
+                this.swayTimer = 0;
+                this.endingTimer = 0;
+                this.endingCharData = [];
+            }
+
+            prepareEndingText() {
+                this.endingTimer = 0;
+                this.endingCharData = [];
+                const lines = ENDING_TEXT.split('\n');
+                const fontSize = Math.floor(48 * scaleFactor);
+                const lineSpacing = 24 * scaleFactor;
+                const totalH = lines.length * fontSize + (lines.length - 1) * lineSpacing;
+                let curY = HEIGHT / 2 - totalH / 2;
+
+                ctx.font = `bold ${fontSize}px 'CustomFont', sans-serif`;
+                let globalCharIdx = 0;
+
+                lines.forEach((line, lineIdx) => {
+                    const lineW = ctx.measureText(line).width;
+                    let curX = WIDTH / 2 - lineW / 2;
+                    const pause = lineIdx > 0 ? 15 : 0;
+
+                    for (let ch of line) {
+                        const cw = ctx.measureText(ch).width;
+                        this.endingCharData.push({
+                            char: ch,
+                            x: curX,
+                            y: curY + fontSize,
+                            startFrame: globalCharIdx * 10 + pause
+                        });
+                        curX += cw;
+                        globalCharIdx++;
+                    }
+                    curY += fontSize + lineSpacing;
+                });
+            }
+
+            setTarget(stateIdx) {
+                this.isHeartMode = (stateIdx === 7);
+                this.isEndingMode = (stateIdx === 8);
+                const targets = [];
+
+                if (this.isHeartMode) {
+                    this.heartBorderPoints = [];
+                    const heartScale = 14;
+                    for (let i = 0; i < 1100; i++) {
+                        const t = Math.random() * Math.PI * 2;
+                        const s = heartScale + (Math.random() - 0.5) * 2.8;
+                        const pt = getHeartPoint(t, s);
+                        targets.push({ x: pt.x, y: pt.y, type: 'heart' });
+                        if (Math.abs(s - heartScale) < 0.6) {
+                            this.heartBorderPoints.push(pt);
+                        }
+                    }
+                    const centerPts = sampleText("中秋快乐", Math.floor(52 * scaleFactor), 4);
+                    centerPts.forEach(pt => targets.push({ x: pt.x, y: pt.y, type: 'text' }));
+                } else if (this.isEndingMode) {
+                    fadeAudio(bgm, 2500); // 音乐 2.5 秒平滑淡出
+                    this.prepareEndingText();
+
+                    // 爱心消散化为星光
+                    this.particles.forEach(p => {
+                        const angle = Math.atan2(p.y - (HEIGHT / 2 - 25), p.x - WIDTH / 2) + (Math.random() - 0.5) * 0.8;
+                        const spd = 1.5 + Math.random() * 3.5;
+                        p.vx = Math.cos(angle) * spd;
+                        p.vy = Math.sin(angle) * spd;
+                        p.alpha = 1.0;
+                        p.decay = 0.008 + Math.random() * 0.015;
+                        p.type = 'stardust';
+                        p.color = HEX_COLORS_SPARKS[Math.floor(Math.random() * HEX_COLORS_SPARKS.length)];
+                    });
+                    return;
+                } else {
+                    const seq = ["3", "2", "1", "亲爱的", "祝 你", "中秋快乐", "岁岁无忧"];
+                    const pts = sampleText(seq[stateIdx], Math.floor(160 * scaleFactor), 6);
+                    pts.forEach(pt => targets.push({ x: pt.x, y: pt.y, type: 'normal' }));
+                }
+
+                // 调整粒子总数
+                while (this.particles.length < targets.length) {
+                    this.particles.push({ x: Math.random() * WIDTH, y: Math.random() * HEIGHT, type: 'normal' });
+                }
+                if (this.particles.length > targets.length) {
+                    this.particles = this.particles.slice(0, targets.length);
+                }
+
+                targets.sort(() => Math.random() - 0.5);
+                targets.forEach((pt, i) => {
+                    this.particles[i].tx = pt.x;
+                    this.particles[i].ty = pt.y;
+                    this.particles[i].type = pt.type;
+                });
+            }
+
+            draw() {
+                let swayX = 0, swayY = 0, pulse = 0;
+                if (this.isHeartMode) {
+                    this.swayTimer += 0.02;
+                    swayX = Math.sin(this.swayTimer) * 16 * scaleFactor;
+                    swayY = Math.cos(this.swayTimer * 0.7) * 10 * scaleFactor;
+                    pulse = Math.sin(this.heartPulse) * 3.5;
+                    this.heartPulse += 0.08;
+                }
+
+                // 1. 粒子运动与绘制
+                if (this.isEndingMode) {
+                    this.particles.forEach(p => {
+                        if (p.alpha > 0) {
+                            p.x += p.vx;
+                            p.y += p.vy;
+                            p.vx *= 0.985;
+                            p.vy *= 0.985;
+                            p.alpha = Math.max(0, p.alpha - p.decay);
+
+                            ctx.globalAlpha = p.alpha;
+                            ctx.fillStyle = p.color;
+                            ctx.beginPath();
+                            ctx.arc(p.x, p.y, 1.5, 0, Math.PI * 2);
+                            ctx.fill();
+                            ctx.globalAlpha = 1.0;
+                        }
+                    });
+                } else {
+                    this.particles.forEach(p => {
+                        p.x += (p.tx - p.x) * 0.08 + (Math.random() - 0.5);
+                        p.y += (p.ty - p.y) * 0.08 + (Math.random() - 0.5);
+                        const fx = p.x + swayX;
+                        const fy = p.y + swayY + pulse;
+
+                        if (p.type === 'heart') {
+                            ctx.drawImage(heartTexture, fx - 6, fy - 6);
+                        } else if (p.type === 'text') {
+                            ctx.drawImage(centerTextTexture, fx - 4.5, fy - 4.5);
+                        } else {
+                            ctx.fillStyle = '#FFFFFF';
+                            ctx.beginPath();
+                            ctx.arc(fx, fy, 2.5, 0, Math.PI * 2);
+                            ctx.fill();
+                        }
+                    });
+                }
+
+                // 2. 爱心爆发火花
+                if (this.isHeartMode && this.heartBorderPoints.length > 0) {
+                    for (let i = 0; i < 6; i++) {
+                        const bp = this.heartBorderPoints[Math.floor(Math.random() * this.heartBorderPoints.length)];
+                        const angle = Math.atan2(bp.y - (HEIGHT / 2 - 20), bp.x - WIDTH / 2);
+                        const spd = 1.2 + Math.random() * 2.5;
+                        this.sparks.push({
+                            x: bp.x + swayX,
+                            y: bp.y + swayY,
+                            vx: Math.cos(angle) * spd + (Math.random() - 0.5) * 0.4,
+                            vy: Math.sin(angle) * spd + (Math.random() - 0.5) * 0.4,
+                            life: 40,
+                            maxLife: 40,
+                            color: HEX_COLORS_SPARKS[Math.floor(Math.random() * HEX_COLORS_SPARKS.length)]
+                        });
+                    }
+                }
+
+                for (let i = this.sparks.length - 1; i >= 0; i--) {
+                    const s = this.sparks[i];
+                    s.x += s.vx;
+                    s.y += s.vy;
+                    s.vx *= 0.96;
+                    s.vy *= 0.96;
+                    s.life--;
+                    if (s.life <= 0) {
+                        this.sparks.splice(i, 1);
+                    } else {
+                        ctx.globalAlpha = s.life / s.maxLife;
+                        ctx.fillStyle = s.color;
+                        ctx.beginPath();
+                        ctx.arc(s.x, s.y, 2, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.globalAlpha = 1.0;
+                    }
+                }
+
+                // 3. 结束语逐字浮现
+                if (this.isEndingMode) {
+                    this.endingTimer++;
+                    ctx.font = `bold ${Math.floor(48 * scaleFactor)}px 'CustomFont', sans-serif`;
+                    ctx.fillStyle = HEX_COLOR_ENDING_TEXT;
+
+                    this.endingCharData.forEach(item => {
+                        if (this.endingTimer >= item.startFrame) {
+                            const progress = Math.min(1.0, (this.endingTimer - item.startFrame) / 15.0);
+                            ctx.globalAlpha = progress;
+                            const offsetY = (1.0 - progress) * 4.0;
+                            ctx.fillText(item.char, item.x, item.y - offsetY);
+                            ctx.globalAlpha = 1.0;
+                        }
+                    });
+                }
+            }
+        }
+
+        // 音频平滑淡出辅助
+        function fadeAudio(audio, durationMs) {
+            const startVol = audio.volume;
+            const stepMs = 50;
+            const steps = durationMs / stepMs;
+            const volStep = startVol / steps;
+
+            const interval = setInterval(() => {
+                if (audio.volume > volStep) {
+                    audio.volume -= volStep;
+                } else {
+                    audio.volume = 0;
+                    clearInterval(interval);
+                }
+            }, stepMs);
+        }
+
+        // ================= 状态机大循环 =================
+        const rain = new MatrixRain();
+        const system = new SuperParticleSystem();
+        system.setTarget(0);
+
+        let curState = 0;
+        let timer = 0;
+        let fadeAlpha = 0;
+        let isFadingIn = true;
+        let isStarted = false;
+
+        function animate() {
+            timer++;
+            if (timer > STATE_DURATIONS[curState]) {
+                if (curState < STATE_DURATIONS.length - 1) {
+                    timer = 0;
+                    curState++;
+                    system.setTarget(curState);
+                } else {
+                    fadeAlpha += 0.02;
+                    if (fadeAlpha >= 1.0) {
+                        curState = 0;
+                        timer = 0;
+                        system.setTarget(0);
+                        bgm.currentTime = 0;
+                        bgm.volume = 0.5;
+                        bgm.play();
+                        isFadingIn = true;
+                    }
+                }
+            }
+
+            if (isFadingIn) {
+                fadeAlpha -= 0.02;
+                if (fadeAlpha <= 0) {
+                    fadeAlpha = 0;
+                    isFadingIn = false;
+                }
+            }
+
+            rain.draw();
+            system.draw();
+
+            if (fadeAlpha > 0) {
+                ctx.fillStyle = `rgba(0, 0, 0, ${Math.min(1.0, fadeAlpha)})`;
+                ctx.fillRect(0, 0, WIDTH, HEIGHT);
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // 启动应用
+        function startApp() {
+            if (isStarted) return;
+            isStarted = true;
+            document.getElementById('start-overlay').style.opacity = '0';
+            setTimeout(() => {
+                document.getElementById('start-overlay').style.display = 'none';
+            }, 800);
+
+            bgm.volume = 0.5;
+            bgm.play().catch(() => {});
+            animate();
+        }
+    </script>
+</body>
+</html>
