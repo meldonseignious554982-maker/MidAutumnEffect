@@ -1,5 +1,5 @@
 name: Build Android APK
-on: 
+on:
   push:
     branches: [ main ]
   workflow_dispatch:
@@ -17,15 +17,32 @@ jobs:
         with:
           python-version: '3.10'
 
-      # 使用专用 Buildozer 动作环境
-      - name: Build with Buildozer Action
-        uses: ArtemSBulgakov/buildozer-action@v1
+      # 安装官方 Java 17 环境
+      - name: Set up Java
+        uses: actions/setup-java@v4
         with:
-          workdir: .
-          buildozer_version: stable
+          distribution: 'temurin'
+          java-version: '17'
 
-      # 这里已全部升级至官方最新的 v4，彻底解决报错
-      - name: Upload APK Artifact
+      # 安装 Linux 编译安卓所需的核心底层工具链
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git zip unzip autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev
+
+      # 安装打包工具
+      - name: Install Buildozer & Cython
+        run: |
+          pip install --upgrade pip
+          pip install buildozer cython
+
+      # 原生直接执行打包（不再使用有 bug 的 Docker）
+      - name: Build with Buildozer
+        run: |
+          yes | buildozer -v android debug
+
+      # 上传生成的 APK 安装包
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: MidAutumn-APK
