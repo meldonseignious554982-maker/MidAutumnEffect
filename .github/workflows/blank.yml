@@ -1,28 +1,32 @@
 name: Build Android APK
-on: [push, workflow_dispatch]
+on: 
+  push:
+    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v2
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v5
         with:
-          python-version: 3.10
+          python-version: '3.10'
 
-      - name: Install dependencies
-        run: |
-          pip install --upgrade pip
-          pip install buildozer cython
-
-      - name: Build with Buildozer
-        run: |
-          yes | buildozer -v android debug
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v3
+      # 使用专用 Buildozer 动作环境
+      - name: Build with Buildozer Action
+        uses: ArtemSBulgakov/buildozer-action@v1
         with:
-          name: package
+          workdir: .
+          buildozer_version: stable
+
+      # 这里已全部升级至官方最新的 v4，彻底解决报错
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MidAutumn-APK
           path: bin/*.apk
