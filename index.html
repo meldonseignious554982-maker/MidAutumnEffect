@@ -28,47 +28,44 @@
             -webkit-font-smoothing: antialiased;
         }
 
-        /* 硬件级高画质等比投影 */
+        /* 修复 CSS calc 兼容性：使用标准浮点乘法，全浏览器 100% 兼容无黑屏 */
         #canvas {
             width: 100vw;
             height: 100vh;
-            max-width: calc(100vh * (1000 / 720));
-            max-height: calc(100vw * (720 / 1000));
+            max-width: calc(100vh * 1.3888);
+            max-height: calc(100vw * 0.7200);
             object-fit: contain;
             display: block;
-            image-rendering: -webkit-optimize-contrast;
-            image-rendering: crisp-edges;
         }
 
-        /* 首次开启遮罩 */
         #start-overlay {
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.88);
+            background: rgba(0, 0, 0, 0.9);
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            z-index: 999;
+            z-index: 9999;
             cursor: pointer;
-            transition: opacity 0.8s ease;
+            transition: opacity 0.6s ease;
         }
         .moon-icon {
-            font-size: 60px;
+            font-size: 64px;
             margin-bottom: 20px;
             animation: pulse 2s infinite ease-in-out;
         }
         .start-text {
             color: #FFF066;
-            font-size: 20px;
-            letter-spacing: 2px;
+            font-size: 22px;
+            letter-spacing: 3px;
             font-weight: bold;
         }
         @keyframes pulse {
-            0%, 100% { transform: scale(1); opacity: 0.8; }
+            0%, 100% { transform: scale(1); opacity: 0.85; }
             50% { transform: scale(1.15); opacity: 1; }
         }
 
@@ -192,7 +189,7 @@
 </head>
 <body>
 
-    <div id="start-overlay" onclick="startApp()">
+    <div id="start-overlay">
         <div class="moon-icon">🌕</div>
         <div class="start-text">点击开启中秋祝福</div>
     </div>
@@ -230,7 +227,6 @@
     </div>
 
     <script>
-        // ================= 参数配置 =================
         const WIDTH = 1000;
         const HEIGHT = 720;
         const FPS = 60;
@@ -269,12 +265,11 @@
         const STATE_DURATIONS = [65, 65, 65, 90, 90, 110, 110, 3720, ENDING_DURATION];
         const TOTAL_FRAMES = STATE_DURATIONS.reduce((a, b) => a + b, 0);
 
-        // ================= 【高画质 2K 超清渲染引擎】 =================
+        // ================= 2K Retina 超清画布 =================
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
         const bgm = document.getElementById('bgm');
 
-        // 双倍高分采样，彻底杜绝模糊
         const DPR = Math.max(window.devicePixelRatio || 1, 2.0);
         canvas.width = WIDTH * DPR;
         canvas.height = HEIGHT * DPR;
@@ -298,7 +293,7 @@
         const heartTexture = createHeartCanvas(MINI_HEART_SIZE, HEX_COLOR_HEART);
         const centerTextTexture = createHeartCanvas(MINI_HEART_SIZE - 2, HEX_COLOR_CENTER_TEXT);
 
-        // ================= 背景代码雨 =================
+        // ================= 代码雨 =================
         class MatrixRain {
             constructor() {
                 this.cols = Math.floor(WIDTH / MATRIX_COL_SPACING);
@@ -323,7 +318,7 @@
             }
         }
 
-        // ================= 粒子高密采样（画质锐化升级） =================
+        // ================= 粒子采样 (修复步长取整防空) =================
         function sampleText(text, fontSize, step) {
             const offCanvas = document.createElement('canvas');
             const offCtx = offCanvas.getContext('2d');
@@ -337,8 +332,9 @@
 
             const imgData = offCtx.getImageData(0, 0, w, h).data;
             const points = [];
-            for (let x = 0; x < w; x += step) {
-                for (let y = 0; y < h; y += step) {
+            const intStep = Math.max(1, Math.floor(step));
+            for (let x = 0; x < w; x += intStep) {
+                for (let y = 0; y < h; y += intStep) {
                     if (imgData[(y * w + x) * 4 + 3] > 120) {
                         points.push({ x: WIDTH / 2 - w / 2 + x, y: HEIGHT / 2 - h / 2 + y });
                     }
@@ -414,7 +410,7 @@
                         targets.push({ x: pt.x, y: pt.y, type: 'heart' });
                         if (Math.abs(scaleOffset) < 0.8) this.heartBorderPoints.push(pt);
                     }
-                    const centerPts = sampleText("中秋快乐", FONT_SIZE_CENTER, 3.5);
+                    const centerPts = sampleText("中秋快乐", FONT_SIZE_CENTER, 3);
                     centerPts.forEach(pt => targets.push({ x: pt.x, y: pt.y, type: 'text' }));
                 } else if (this.isEndingMode) {
                     this.prepareEndingText();
@@ -429,7 +425,6 @@
                     return;
                 } else {
                     const seq = ["3", "2", "1", "亲爱的", "祝 你", "中秋快乐", "岁岁无忧"];
-                    // 精度升级：采样步长减小到 4，大字更加饱满细腻、不糊
                     const pts = sampleText(seq[stateIdx], FONT_SIZE_LARGE, 4);
                     pts.forEach(pt => targets.push({ x: pt.x, y: pt.y, type: 'normal' }));
                 }
@@ -437,7 +432,9 @@
                 while (this.particles.length < targets.length) {
                     this.particles.push({ x: Math.random() * WIDTH, y: Math.random() * HEIGHT, type: 'normal' });
                 }
-                if (this.particles.length > targets.length) this.particles = this.particles.slice(0, targets.length);
+                if (this.particles.length > targets.length) {
+                    this.particles = this.particles.slice(0, targets.length);
+                }
 
                 targets.sort(() => Math.random() - 0.5);
                 targets.forEach((pt, i) => {
@@ -481,7 +478,6 @@
                             ctx.drawImage(centerTextTexture, fx - (MINI_HEART_SIZE - 2) / 2, fy - (MINI_HEART_SIZE - 2) / 2, MINI_HEART_SIZE - 2, MINI_HEART_SIZE - 2);
                         } else {
                             ctx.fillStyle = '#FFFFFF';
-                            // 粒子微调至 2.2px 精巧小点，边缘清晰锐利
                             ctx.beginPath(); ctx.arc(fx, fy, 2.2, 0, Math.PI * 2); ctx.fill();
                         }
                     });
@@ -533,7 +529,7 @@
             }
         }
 
-        // ================= 状态机与播放器核心控制 =================
+        // ================= 播放器控制与安全音量 =================
         const rain = new MatrixRain();
         const system = new SuperParticleSystem();
         system.setTarget(0);
@@ -542,9 +538,13 @@
         let isPlaying = false, isStarted = false;
         let userVolume = 0.5;
 
-        // 全局安全音量控制器
+        // 核心容错：安全修改音量，绝不抛出异常阻塞页面
         function applyVolume(vol) {
-            bgm.volume = Math.max(0, Math.min(1, vol));
+            try {
+                if (bgm) {
+                    bgm.volume = Math.max(0, Math.min(1, vol));
+                }
+            } catch (e) {}
         }
 
         function getGlobalFrame() {
@@ -564,8 +564,10 @@
                 }
                 acc += STATE_DURATIONS[i];
             }
-            if (bgm.duration) {
-                bgm.currentTime = (targetFrame / TOTAL_FRAMES) * bgm.duration;
+            if (bgm && bgm.duration) {
+                try {
+                    bgm.currentTime = (targetFrame / TOTAL_FRAMES) * bgm.duration;
+                } catch(e) {}
             }
         }
 
@@ -595,19 +597,25 @@
         }
 
         window.addEventListener('mousemove', showUI);
-        window.addEventListener('touchstart', showUI);
+        window.addEventListener('touchstart', showUI, { passive: true });
 
         function togglePlay() {
+            if (!isStarted) return;
             isPlaying = !isPlaying;
             if (isPlaying) {
-                bgm.play().catch(() => {});
+                if (bgm) bgm.play().catch(() => {});
                 playIcon.innerText = '❚❚';
             } else {
-                bgm.pause();
+                if (bgm) bgm.pause();
                 playIcon.innerText = '▶';
                 playerUI.classList.add('active');
             }
         }
+
+        // 点击画布也可切换播放暂停
+        canvas.addEventListener('click', () => {
+            if (isStarted) togglePlay();
+        });
 
         window.addEventListener('keydown', (e) => {
             if (e.code === 'Space') {
@@ -625,18 +633,16 @@
 
         function changeVolume(val) {
             userVolume = parseFloat(val);
-            bgm.muted = false;
+            if (bgm) bgm.muted = false;
             volumeIcon.innerText = userVolume === 0 ? '🔇' : '🔊';
         }
 
         function toggleMute() {
-            if (bgm.muted || userVolume === 0) {
-                bgm.muted = false;
+            if (userVolume === 0) {
                 userVolume = 0.5;
                 volumeSlider.value = 0.5;
                 volumeIcon.innerText = '🔊';
             } else {
-                bgm.muted = true;
                 userVolume = 0;
                 volumeSlider.value = 0;
                 volumeIcon.innerText = '🔇';
@@ -656,11 +662,11 @@
             } catch (err) {}
         }
 
-        // ================= 严格锁帧与动态音频驱动主循环 =================
+        // ================= 严格锁帧主循环 =================
         const TARGET_FPS = 60, FRAME_INTERVAL = 1000 / TARGET_FPS;
         let lastTime = performance.now();
 
-        function animate(currentTime) {
+        function animate(currentTime = performance.now()) {
             requestAnimationFrame(animate);
             const elapsed = currentTime - lastTime;
             if (elapsed < FRAME_INTERVAL) return;
@@ -671,13 +677,11 @@
             if (isPlaying) {
                 timer++;
 
-                // 【核心算法修复】：帧驱动动态音频淡出，彻底告别戛然而止
+                // 帧驱动平滑音量衰减
                 if (curState === 8) {
-                    // 在结束画面的前 2.5 秒（精确 150 帧）内，直接按数学比例衰减用户设置的音量
                     const fadeProgress = Math.min(1.0, timer / 150.0);
                     applyVolume(userVolume * (1.0 - fadeProgress));
                 } else {
-                    // 非结束画面：始终无缝保持用户调整的音量
                     applyVolume(userVolume);
                 }
 
@@ -691,9 +695,11 @@
                         if (fadeAlpha >= 1.0) {
                             curState = 0; timer = 0;
                             system.setTarget(0);
-                            bgm.currentTime = 0;
-                            applyVolume(userVolume); // 循环重开，自动复原设定音量
-                            bgm.play().catch(() => {});
+                            if (bgm) {
+                                try { bgm.currentTime = 0; } catch(e) {}
+                                applyVolume(userVolume);
+                                bgm.play().catch(() => {});
+                            }
                             isFadingIn = true;
                         }
                     }
@@ -720,19 +726,36 @@
             }
         }
 
+        // ================= 启动函数（双重事件监听，确保必开） =================
         function startApp() {
             if (isStarted) return;
             isStarted = true;
             isPlaying = true;
-            document.getElementById('start-overlay').style.opacity = '0';
-            setTimeout(() => { document.getElementById('start-overlay').style.display = 'none'; }, 800);
+
+            const overlay = document.getElementById('start-overlay');
+            if (overlay) {
+                overlay.style.opacity = '0';
+                setTimeout(() => { overlay.style.display = 'none'; }, 600);
+            }
 
             applyVolume(userVolume);
-            bgm.play().catch(() => {});
+            if (bgm) {
+                const p = bgm.play();
+                if (p && p.catch) p.catch(() => {});
+            }
+
             showUI();
             lastTime = performance.now();
             requestAnimationFrame(animate);
         }
+
+        // 无论鼠标点击还是手机触控，确保 100% 触发进入
+        const overlayEl = document.getElementById('start-overlay');
+        overlayEl.addEventListener('click', startApp);
+        overlayEl.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            startApp();
+        }, { passive: false });
     </script>
 </body>
 </html>
