@@ -523,4 +523,216 @@
                     ctx.fillStyle = HEX_COLOR_ENDING_TEXT;
                     this.endingCharData.forEach(item => {
                         if (this.endingTimer >= item.startFrame) {
-                            const progress = Math.min(1.0, (this.en
+                            const progress = Math.min(1.0, (this.endingTimer - item.startFrame) / 15.0);
+                            ctx.globalAlpha = progress;
+                            ctx.fillText(item.char, item.x, item.y - (1.0 - progress) * 4.0);
+                            ctx.globalAlpha = 1.0;
+                        }
+                    });
+                }
+            }
+        }
+
+        // ================= 状态机与播放器核心控制 =================
+        const rain = new MatrixRain();
+        const system = new SuperParticleSystem();
+        system.setTarget(0);
+
+        let curState = 0, timer = 0, fadeAlpha = 0, isFadingIn = true;
+        let isPlaying = false, isStarted = false;
+        let userVolume = 0.5;
+
+        // 全局安全音量控制器
+        function applyVolume(vol) {
+            bgm.volume = Math.max(0, Math.min(1, vol));
+        }
+
+        function getGlobalFrame() {
+            let sum = 0;
+            for (let i = 0; i < curState; i++) sum += STATE_DURATIONS[i];
+            return sum + timer;
+        }
+
+        function jumpToGlobalFrame(targetFrame) {
+            let acc = 0;
+            for (let i = 0; i < STATE_DURATIONS.length; i++) {
+                if (targetFrame < acc + STATE_DURATIONS[i] || i === STATE_DURATIONS.length - 1) {
+                    curState = i;
+                    timer = targetFrame - acc;
+                    system.setTarget(curState);
+                    break;
+                }
+                acc += STATE_DURATIONS[i];
+            }
+            if (bgm.duration) {
+                bgm.currentTime = (targetFrame / TOTAL_FRAMES) * bgm.duration;
+            }
+        }
+
+        function formatTime(seconds) {
+            const m = Math.floor(seconds / 60);
+            const s = Math.floor(seconds % 60);
+            return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+        }
+
+        // ================= UI 交互 =================
+        const playerUI = document.getElementById('player-ui');
+        const progressBar = document.getElementById('progress-bar');
+        const currentTimeEl = document.getElementById('current-time');
+        const totalTimeEl = document.getElementById('total-time');
+        const playIcon = document.getElementById('play-icon');
+        const volumeIcon = document.getElementById('volume-icon');
+        const volumeSlider = document.getElementById('volume-slider');
+        let hideUITimer = null;
+
+        function showUI() {
+            if (!isStarted) return;
+            playerUI.classList.add('active');
+            clearTimeout(hideUITimer);
+            hideUITimer = setTimeout(() => {
+                if (isPlaying) playerUI.classList.remove('active');
+            }, 3000);
+        }
+
+        window.addEventListener('mousemove', showUI);
+        window.addEventListener('touchstart', showUI);
+
+        function togglePlay() {
+            isPlaying = !isPlaying;
+            if (isPlaying) {
+                bgm.play().catch(() => {});
+                playIcon.innerText = '❚❚';
+            } else {
+                bgm.pause();
+                playIcon.innerText = '▶';
+                playerUI.classList.add('active');
+            }
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                togglePlay();
+            }
+        });
+
+        function seek(e) {
+            const rect = document.getElementById('progress-container').getBoundingClientRect();
+            const clickX = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+            const ratio = clickX / rect.width;
+            jumpToGlobalFrame(Math.floor(ratio * TOTAL_FRAMES));
+        }
+
+        function changeVolume(val) {
+            userVolume = parseFloat(val);
+            bgm.muted = false;
+            volumeIcon.innerText = userVolume === 0 ? '🔇' : '🔊';
+        }
+
+        function toggleMute() {
+            if (bgm.muted || userVolume === 0) {
+                bgm.muted = false;
+                userVolume = 0.5;
+                volumeSlider.value = 0.5;
+                volumeIcon.innerText = '🔊';
+            } else {
+                bgm.muted = true;
+                userVolume = 0;
+                volumeSlider.value = 0;
+                volumeIcon.innerText = '🔇';
+            }
+        }
+
+        async function toggleFullscreen() {
+            try {
+                if (!document.fullscreenElement) {
+                    await document.documentElement.requestFullscreen();
+                    if (screen.orientation && screen.orientation.lock) {
+                        await screen.orientation.lock('landscape').catch(() => {});
+                    }
+                } else {
+                    if (document.exitFullscreen) await document.exitFullscreen();
+                }
+            } catch (err) {}
+        }
+
+        // ================= 严格锁帧与动态音频驱动主循环 =================
+        const TARGET_FPS = 60, FRAME_INTERVAL = 1000 / TARGET_FPS;
+        let lastTime = performance.now();
+
+        function animate(currentTime) {
+            requestAnimationFrame(animate);
+            const elapsed = currentTime - lastTime;
+            if (elapsed < FRAME_INTERVAL) return;
+            lastTime = currentTime - (elapsed % FRAME_INTERVAL);
+
+            ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+            if (isPlaying) {
+                timer++;
+
+                // 【核心算法修复】：帧驱动动态音频淡出，彻底告别戛然而止
+                if (curState === 8) {
+                    // 在结束画面的前 2.5 秒（精确 150 帧）内，直接按数学比例衰减用户设置的音量
+                    const fadeProgress = Math.min(1.0, timer / 150.0);
+                    applyVolume(userVolume * (1.0 - fadeProgress));
+                } else {
+                    // 非结束画面：始终无缝保持用户调整的音量
+                    applyVolume(userVolume);
+                }
+
+                if (timer > STATE_DURATIONS[curState]) {
+                    if (curState < STATE_DURATIONS.length - 1) {
+                        timer = 0;
+                        curState++;
+                        system.setTarget(curState);
+                    } else {
+                        fadeAlpha += 0.02;
+                        if (fadeAlpha >= 1.0) {
+                            curState = 0; timer = 0;
+                            system.setTarget(0);
+                            bgm.currentTime = 0;
+                            applyVolume(userVolume); // 循环重开，自动复原设定音量
+                            bgm.play().catch(() => {});
+                            isFadingIn = true;
+                        }
+                    }
+                }
+
+                if (isFadingIn) {
+                    fadeAlpha -= 0.02;
+                    if (fadeAlpha <= 0) { fadeAlpha = 0; isFadingIn = false; }
+                }
+
+                const curFrame = getGlobalFrame();
+                const progressPct = (curFrame / TOTAL_FRAMES) * 100;
+                progressBar.style.width = `${progressPct}%`;
+                currentTimeEl.innerText = formatTime(curFrame / FPS);
+                totalTimeEl.innerText = formatTime(TOTAL_FRAMES / FPS);
+            }
+
+            rain.draw();
+            system.draw();
+
+            if (fadeAlpha > 0) {
+                ctx.fillStyle = `rgba(0, 0, 0, ${Math.min(1.0, fadeAlpha)})`;
+                ctx.fillRect(0, 0, WIDTH, HEIGHT);
+            }
+        }
+
+        function startApp() {
+            if (isStarted) return;
+            isStarted = true;
+            isPlaying = true;
+            document.getElementById('start-overlay').style.opacity = '0';
+            setTimeout(() => { document.getElementById('start-overlay').style.display = 'none'; }, 800);
+
+            applyVolume(userVolume);
+            bgm.play().catch(() => {});
+            showUI();
+            lastTime = performance.now();
+            requestAnimationFrame(animate);
+        }
+    </script>
+</body>
+</html>
