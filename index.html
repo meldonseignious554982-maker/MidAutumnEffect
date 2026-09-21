@@ -26,7 +26,7 @@
             align-items: center;
             font-family: 'CustomFont', -apple-system, sans-serif;
         }
-        /* 核心：等比自适应投影，保证 1000x720 比例完美还原，不拉伸不变形 */
+
         #canvas {
             width: 100vw;
             height: 100vh;
@@ -35,6 +35,8 @@
             object-fit: contain;
             display: block;
         }
+
+        /* 首次开启遮罩 */
         #start-overlay {
             position: fixed;
             top: 0;
@@ -65,76 +67,206 @@
             0%, 100% { transform: scale(1); opacity: 0.8; }
             50% { transform: scale(1.15); opacity: 1; }
         }
+
+        /* ================= 仿 X (Twitter) 播放控制栏 ================= */
+        #player-ui {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            padding: 20px 24px 15px;
+            background: linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 70%, transparent 100%);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            z-index: 100;
+            transition: opacity 0.4s ease, transform 0.4s ease;
+            opacity: 0;
+            pointer-events: none;
+        }
+        #player-ui.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        /* 进度条轨道 */
+        .progress-container {
+            position: relative;
+            width: 100%;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.25);
+            border-radius: 3px;
+            cursor: pointer;
+            transition: height 0.15s ease;
+        }
+        .progress-container:hover {
+            height: 8px;
+        }
+        .progress-bar {
+            height: 100%;
+            width: 0%;
+            background: #f688a7;
+            border-radius: 3px;
+            position: relative;
+        }
+        .progress-handle {
+            position: absolute;
+            right: -6px;
+            top: 50%;
+            transform: translateY(-50%) scale(0);
+            width: 12px;
+            height: 12px;
+            background: #FFF;
+            border-radius: 50%;
+            box-shadow: 0 0 6px rgba(0,0,0,0.5);
+            transition: transform 0.15s ease;
+        }
+        .progress-container:hover .progress-handle {
+            transform: translateY(-50%) scale(1);
+        }
+
+        /* 控制按钮排版 */
+        .controls-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            color: #fff;
+        }
+        .controls-left, .controls-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .btn {
+            background: none;
+            border: none;
+            color: #fff;
+            cursor: pointer;
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            outline: none;
+            transition: transform 0.1s ease, color 0.2s;
+        }
+        .btn:hover {
+            color: #FFF066;
+            transform: scale(1.1);
+        }
+        .btn:active {
+            transform: scale(0.95);
+        }
+
+        /* 时间显示 */
+        .time-display {
+            font-size: 13px;
+            font-family: -apple-system, sans-serif;
+            color: rgba(255, 255, 255, 0.85);
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* 音量条容器 */
+        .volume-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .volume-slider {
+            width: 70px;
+            height: 4px;
+            -webkit-appearance: none;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 2px;
+            outline: none;
+            cursor: pointer;
+        }
+        .volume-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #fff;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
 
+    <!-- 首次启动遮罩 -->
     <div id="start-overlay" onclick="startApp()">
         <div class="moon-icon">🌕</div>
         <div class="start-text">点击开启中秋祝福</div>
     </div>
 
-    <!-- 内部渲染分辨率锁定为 1000 x 720 -->
+    <!-- 核心画布与音频 -->
     <canvas id="canvas" width="1000" height="720"></canvas>
     <audio id="bgm" src="bgm.mp3" loop preload="auto"></audio>
 
-    <script>
-        // ==============================================================================
-        //           【参数配置：与 VS 里的 Python 代码完全保持 100% 精确一致】
-        // ==============================================================================
-        const WIDTH = 1000;
-        const HEIGHT = 720;
-        const FPS = 60;
+    <!-- 仿 X 交互播放控制台 -->
+    <div id="player-ui">
+        <div class="progress-container" id="progress-container" onclick="seek(event)">
+            <div class="progress-bar" id="progress-bar">
+                <div class="progress-handle"></div>
+            </div>
+        </div>
+        <div class="controls-row">
+            <div class="controls-left">
+                <!-- 播放/暂停 -->
+                <button class="btn" id="play-btn" onclick="togglePlay()">
+                    <span id="play-icon">❚❚</span>
+                </button>
+                <!-- 音量 -->
+                <div class="volume-container">
+                    <button class="btn" onclick="toggleMute()">
+                        <span id="volume-icon">🔊</span>
+                    </button>
+                    <input type="range" class="volume-slider" id="volume-slider" min="0" max="1" step="0.02" value="0.5" oninput="changeVolume(this.value)">
+                </div>
+                <!-- 计时器 -->
+                <div class="time-display">
+                    <span id="current-time">00:00</span> / <span id="total-time">01:17</span>
+                </div>
+            </div>
+            <div class="controls-right">
+                <!-- 全屏与横屏切换 -->
+                <button class="btn" onclick="toggleFullscreen()" title="横屏/全屏切换">
+                    <span>⛶</span>
+                </button>
+            </div>
+        </div>
+    </div>
 
-        // A. 背景代码雨独立配置
-        const FONT_SIZE_MATRIX = 20;           // 代码雨字号 (与VS一致)
-        const MATRIX_COL_SPACING = 3;          // 列间距 3 (与VS一致，致密震撼)
-        const MATRIX_SPEED_MIN = 0.3;          // 最小速度 (与VS一致)
-        const MATRIX_SPEED_MAX = 1.0;          // 最大速度 (与VS一致)
-        const FADE_TRAIL_ALPHA = 25 / 255;     // 拖影透明度 (与VS一致)
+    <script>
+        // ================= 参数配置 =================
+        const WIDTH = 1000, HEIGHT = 720, FPS = 60;
+        const FONT_SIZE_MATRIX = 20, MATRIX_COL_SPACING = 3, MATRIX_SPEED_MIN = 0.3, MATRIX_SPEED_MAX = 1.0;
+        const FADE_TRAIL_ALPHA = 25 / 255;
         const MATRIX_CHARS = "中秋快乐皆如所愿阖家团圆岁岁平安月圆人圆";
 
         const HEX_COLORS_RAIN = ["#6e9dad", "#b36879", "#ad9a50", "#afaaaa"];
-
-        // B. 爱心与爆发火花独立配置
-        const HEX_COLOR_HEART = "#f688a7";
-        const HEX_COLOR_CENTER_TEXT = "#FFF066";
+        const HEX_COLOR_HEART = "#f688a7", HEX_COLOR_CENTER_TEXT = "#FFF066";
         const HEX_COLORS_SPARKS = ["#6e9dad", "#FF85A1", "#FFE066", "#FFFFFF"];
 
-        const MINI_HEART_SIZE = 7;             // 爱心小粒子大小 7 (与VS一致)
-        const HEART_SCALE = 15;                // 爱心大小 15 (与VS一致)
-        const HEART_THICKNESS = 3;             // 爱心厚度 3 (与VS一致)
-        const HEART_BURST_COUNT = 15;          // 每帧爆发火花数量 15 (与VS一致)
-        const HEART_BURST_SPEED = 2.0;         // 爆发初速度 2.0 (与VS一致)
+        const MINI_HEART_SIZE = 7, HEART_SCALE = 15, HEART_THICKNESS = 3;
+        const HEART_BURST_COUNT = 15, HEART_BURST_SPEED = 2.0;
+        const HEART_SWAY_AMP_X = 17.0, HEART_SWAY_AMP_Y = 11.0, HEART_SWAY_SPEED = 0.020;
 
-        const HEART_SWAY_AMP_X = 17.0;         // 左右晃动幅度 17 (与VS一致)
-        const HEART_SWAY_AMP_Y = 11.0;         // 上下晃动幅度 11 (与VS一致)
-        const HEART_SWAY_SPEED = 0.020;        // 漂浮速度 0.02 (与VS一致)
-
-        // C. 前景文字独立配置
-        const FONT_SIZE_LARGE = 190;           // 倒计时、祝福语字号 190 (与VS一致)
-        const FONT_SIZE_CENTER = 60;           // 爱心内部“中秋快乐”字号 60 (与VS一致)
-
-        // D. 结束画面配置
+        const FONT_SIZE_LARGE = 190, FONT_SIZE_CENTER = 60;
         const ENDING_TEXT = "此生风月愿同携\n岁岁晨昏共执蹄";
-        const FONT_SIZE_ENDING = 54;           // 结束语字号 54 (与VS一致)
-        const HEX_COLOR_ENDING_TEXT = "#FFFFFF";
-        const CHAR_APPEAR_INTERVAL = 10;
-        const ENDING_DURATION = 312;
+        const FONT_SIZE_ENDING = 54, HEX_COLOR_ENDING_TEXT = "#FFFFFF";
+        const CHAR_APPEAR_INTERVAL = 10, ENDING_DURATION = 312;
 
-        // 状态持续时间
         const STATE_DURATIONS = [65, 65, 65, 90, 90, 110, 110, 3720, ENDING_DURATION];
+        const TOTAL_FRAMES = STATE_DURATIONS.reduce((a, b) => a + b, 0);
 
-        // ================= 初始化画布 =================
+        // ================= 画布与纹理 =================
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
         const bgm = document.getElementById('bgm');
 
-        // 生成迷你小爱心纹理 (大小与 VS 一致: 7px)
         function createHeartCanvas(size, color) {
             const hCanvas = document.createElement('canvas');
-            hCanvas.width = size;
-            hCanvas.height = size;
+            hCanvas.width = size; hCanvas.height = size;
             const hCtx = hCanvas.getContext('2d');
             hCtx.fillStyle = color;
             const r = size / 4;
@@ -146,38 +278,30 @@
             hCtx.fill();
             return hCanvas;
         }
-
         const heartTexture = createHeartCanvas(MINI_HEART_SIZE, HEX_COLOR_HEART);
         const centerTextTexture = createHeartCanvas(MINI_HEART_SIZE - 2, HEX_COLOR_CENTER_TEXT);
 
-        // ================= 背景代码雨 (与 VS 逻辑 100% 对齐) =================
+        // ================= 背景代码雨 =================
         class MatrixRain {
             constructor() {
-                this.cols = Math.floor(WIDTH / MATRIX_COL_SPACING); // 约 333 列
+                this.cols = Math.floor(WIDTH / MATRIX_COL_SPACING);
                 this.drops = Array.from({ length: this.cols }, () => -Math.random() * 40);
                 this.speeds = Array.from({ length: this.cols }, () => MATRIX_SPEED_MIN + Math.random() * (MATRIX_SPEED_MAX - MATRIX_SPEED_MIN));
                 this.colColors = Array.from({ length: this.cols }, () => HEX_COLORS_RAIN[Math.floor(Math.random() * HEX_COLORS_RAIN.length)]);
             }
-
             draw() {
-                // 拖影透明度与 VS (25/255) 严格一致
                 ctx.fillStyle = `rgba(0, 0, 0, ${FADE_TRAIL_ALPHA})`;
                 ctx.fillRect(0, 0, WIDTH, HEIGHT);
-
                 ctx.font = `${FONT_SIZE_MATRIX}px 'CustomFont', sans-serif`;
                 for (let i = 0; i < this.cols; i++) {
                     const char = MATRIX_CHARS[Math.floor(Math.random() * MATRIX_CHARS.length)];
                     ctx.fillStyle = this.colColors[i];
-                    
-                    const x = i * MATRIX_COL_SPACING;
-                    const y = this.drops[i] * FONT_SIZE_MATRIX;
-                    ctx.fillText(char, x, y);
-
-                    if (y > HEIGHT && Math.random() > 0.96) {
+                    ctx.fillText(char, i * MATRIX_COL_SPACING, this.drops[i] * FONT_SIZE_MATRIX);
+                    if (this.drops[i] * FONT_SIZE_MATRIX > HEIGHT && Math.random() > 0.96) {
                         this.drops[i] = 0;
                         this.colColors[i] = HEX_COLORS_RAIN[Math.floor(Math.random() * HEX_COLORS_RAIN.length)];
                     }
-                    this.drops[i] += this.speeds[i] * 0.18; // 0.18 步进完全一致
+                    this.drops[i] += this.speeds[i] * 0.18;
                 }
             }
         }
@@ -188,11 +312,8 @@
             const offCtx = offCanvas.getContext('2d');
             offCtx.font = `bold ${fontSize}px 'CustomFont', sans-serif`;
             const metrics = offCtx.measureText(text);
-            const w = Math.ceil(metrics.width) + 30;
-            const h = Math.ceil(fontSize * 1.3);
-            offCanvas.width = w;
-            offCanvas.height = h;
-
+            const w = Math.ceil(metrics.width) + 30, h = Math.ceil(fontSize * 1.3);
+            offCanvas.width = w; offCanvas.height = h;
             offCtx.font = `bold ${fontSize}px 'CustomFont', sans-serif`;
             offCtx.fillStyle = '#FFFFFF';
             offCtx.fillText(text, 15, fontSize);
@@ -202,10 +323,7 @@
             for (let x = 0; x < w; x += step) {
                 for (let y = 0; y < h; y += step) {
                     if (imgData[(y * w + x) * 4 + 3] > 120) {
-                        points.push({
-                            x: WIDTH / 2 - w / 2 + x,
-                            y: HEIGHT / 2 - h / 2 + y
-                        });
+                        points.push({ x: WIDTH / 2 - w / 2 + x, y: HEIGHT / 2 - h / 2 + y });
                     }
                 }
             }
@@ -215,18 +333,12 @@
         function getHeartPoint(t, scale) {
             const x = 16 * Math.pow(Math.sin(t), 3);
             const y = -(13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t));
-            return {
-                x: WIDTH / 2 + x * scale,
-                y: HEIGHT / 2 + y * scale - 25
-            };
+            return { x: WIDTH / 2 + x * scale, y: HEIGHT / 2 + y * scale - 25 };
         }
 
-        // 高斯随机分布辅助 (模拟 Python 中的 random.gauss)
         function randomGaussian(mean, stdev) {
-            let u = 1 - Math.random();
-            let v = Math.random();
-            let z = Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
-            return mean + z * stdev;
+            let u = 1 - Math.random(), v = Math.random();
+            return mean + Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v) * stdev;
         }
 
         // ================= 主粒子系统 =================
@@ -250,7 +362,6 @@
                 const lineSpacing = 26;
                 const totalH = lines.length * FONT_SIZE_ENDING + (lines.length - 1) * lineSpacing;
                 let curY = HEIGHT / 2 - totalH / 2;
-
                 ctx.font = `bold ${FONT_SIZE_ENDING}px 'CustomFont', sans-serif`;
                 let globalCharIdx = 0;
 
@@ -258,13 +369,10 @@
                     const lineW = ctx.measureText(line).width;
                     let curX = WIDTH / 2 - lineW / 2;
                     const pause = lineIdx > 0 ? 15 : 0;
-
                     for (let ch of line) {
                         const cw = ctx.measureText(ch).width;
                         this.endingCharData.push({
-                            char: ch,
-                            x: curX,
-                            y: curY + FONT_SIZE_ENDING,
+                            char: ch, x: curX, y: curY + FONT_SIZE_ENDING,
                             startFrame: globalCharIdx * CHAR_APPEAR_INTERVAL + pause
                         });
                         curX += cw;
@@ -281,39 +389,29 @@
 
                 if (this.isHeartMode) {
                     this.heartBorderPoints = [];
-                    // 与 VS 完全一致：生成 1300 颗爱心粒子 + 高斯星云厚度分布
                     for (let i = 0; i < 1300; i++) {
                         const t = Math.random() * Math.PI * 2;
                         const scaleOffset = randomGaussian(0, HEART_THICKNESS * 0.45);
                         const s = HEART_SCALE + scaleOffset;
                         const pt = getHeartPoint(t, s);
                         targets.push({ x: pt.x, y: pt.y, type: 'heart' });
-                        if (Math.abs(scaleOffset) < 0.8) {
-                            this.heartBorderPoints.push(pt);
-                        }
+                        if (Math.abs(scaleOffset) < 0.8) this.heartBorderPoints.push(pt);
                     }
-                    // 中心文字“中秋快乐” (字号 60, step=4)
                     const centerPts = sampleText("中秋快乐", FONT_SIZE_CENTER, 4);
                     centerPts.forEach(pt => targets.push({ x: pt.x, y: pt.y, type: 'text' }));
                 } else if (this.isEndingMode) {
-                    fadeAudio(bgm, 2500); // 音乐 2.5 秒精准淡出
                     this.prepareEndingText();
-
-                    // 爱心粒子向外炸开化为星尘
                     this.particles.forEach(p => {
                         const angle = Math.atan2(p.y - (HEIGHT / 2 - 25), p.x - WIDTH / 2) + (Math.random() - 0.5) * 0.8;
                         const spd = 1.5 + Math.random() * 3.5;
-                        p.vx = Math.cos(angle) * spd;
-                        p.vy = Math.sin(angle) * spd;
-                        p.alpha = 255.0;
-                        p.decay = 1.2 + Math.random() * 1.6;
+                        p.vx = Math.cos(angle) * spd; p.vy = Math.sin(angle) * spd;
+                        p.alpha = 255.0; p.decay = 1.2 + Math.random() * 1.6;
                         p.type = 'stardust';
                         p.color = HEX_COLORS_SPARKS[Math.floor(Math.random() * HEX_COLORS_SPARKS.length)];
                     });
                     return;
                 } else {
                     const seq = ["3", "2", "1", "亲爱的", "祝 你", "中秋快乐", "岁岁无忧"];
-                    // 大字字号 190, step=6 (与VS完全一致)
                     const pts = sampleText(seq[stateIdx], FONT_SIZE_LARGE, 6);
                     pts.forEach(pt => targets.push({ x: pt.x, y: pt.y, type: 'normal' }));
                 }
@@ -321,9 +419,7 @@
                 while (this.particles.length < targets.length) {
                     this.particles.push({ x: Math.random() * WIDTH, y: Math.random() * HEIGHT, type: 'normal' });
                 }
-                if (this.particles.length > targets.length) {
-                    this.particles = this.particles.slice(0, targets.length);
-                }
+                if (this.particles.length > targets.length) this.particles = this.particles.slice(0, targets.length);
 
                 targets.sort(() => Math.random() - 0.5);
                 targets.forEach((pt, i) => {
@@ -343,21 +439,15 @@
                     this.heartPulse += 0.08;
                 }
 
-                // 1. 绘制主体粒子
                 if (this.isEndingMode) {
                     this.particles.forEach(p => {
                         if (p.alpha > 0) {
-                            p.x += p.vx;
-                            p.y += p.vy;
-                            p.vx *= 0.985;
-                            p.vy *= 0.985;
+                            p.x += p.vx; p.y += p.vy;
+                            p.vx *= 0.985; p.vy *= 0.985;
                             p.alpha = Math.max(0, p.alpha - p.decay);
-
                             ctx.globalAlpha = p.alpha / 255;
                             ctx.fillStyle = p.color;
-                            ctx.beginPath();
-                            ctx.arc(p.x, p.y, 1.5, 0, Math.PI * 2);
-                            ctx.fill();
+                            ctx.beginPath(); ctx.arc(p.x, p.y, 1.5, 0, Math.PI * 2); ctx.fill();
                             ctx.globalAlpha = 1.0;
                         }
                     });
@@ -365,8 +455,7 @@
                     this.particles.forEach(p => {
                         p.x += (p.tx - p.x) * 0.08 + (Math.random() - 0.5);
                         p.y += (p.ty - p.y) * 0.08 + (Math.random() - 0.5);
-                        const fx = p.x + swayX;
-                        const fy = p.y + swayY + pulse;
+                        const fx = p.x + swayX, fy = p.y + swayY + pulse;
 
                         if (p.type === 'heart') {
                             ctx.drawImage(heartTexture, fx - MINI_HEART_SIZE / 2, fy - MINI_HEART_SIZE / 2);
@@ -374,26 +463,21 @@
                             ctx.drawImage(centerTextTexture, fx - (MINI_HEART_SIZE - 2) / 2, fy - (MINI_HEART_SIZE - 2) / 2);
                         } else {
                             ctx.fillStyle = '#FFFFFF';
-                            ctx.beginPath();
-                            ctx.arc(fx, fy, 3, 0, Math.PI * 2);
-                            ctx.fill();
+                            ctx.beginPath(); ctx.arc(fx, fy, 3, 0, Math.PI * 2); ctx.fill();
                         }
                     });
                 }
 
-                // 2. 爱心爆发火花 (与VS完全一致：每帧15颗)
                 if (this.isHeartMode && this.heartBorderPoints.length > 0) {
                     for (let i = 0; i < HEART_BURST_COUNT; i++) {
                         const bp = this.heartBorderPoints[Math.floor(Math.random() * this.heartBorderPoints.length)];
                         const angle = Math.atan2(bp.y - (HEIGHT / 2 - 25), bp.x - WIDTH / 2);
                         const spd = 1.2 + Math.random() * HEART_BURST_SPEED;
                         this.sparks.push({
-                            x: bp.x + swayX,
-                            y: bp.y + swayY,
+                            x: bp.x + swayX, y: bp.y + swayY,
                             vx: Math.cos(angle) * spd + (Math.random() - 0.5) * 0.4,
                             vy: Math.sin(angle) * spd + (Math.random() - 0.5) * 0.4,
-                            life: 40,
-                            maxLife: 40,
+                            life: 40, maxLife: 40,
                             color: HEX_COLORS_SPARKS[Math.floor(Math.random() * HEX_COLORS_SPARKS.length)]
                         });
                     }
@@ -401,35 +485,28 @@
 
                 for (let i = this.sparks.length - 1; i >= 0; i--) {
                     const s = this.sparks[i];
-                    s.x += s.vx;
-                    s.y += s.vy;
-                    s.vx *= 0.96;
-                    s.vy *= 0.96;
+                    s.x += s.vx; s.y += s.vy;
+                    s.vx *= 0.96; s.vy *= 0.96;
                     s.life--;
                     if (s.life <= 0) {
                         this.sparks.splice(i, 1);
                     } else {
                         ctx.globalAlpha = s.life / s.maxLife;
                         ctx.fillStyle = s.color;
-                        ctx.beginPath();
-                        ctx.arc(s.x, s.y, 2, 0, Math.PI * 2);
-                        ctx.fill();
+                        ctx.beginPath(); ctx.arc(s.x, s.y, 2, 0, Math.PI * 2); ctx.fill();
                         ctx.globalAlpha = 1.0;
                     }
                 }
 
-                // 3. 结束语逐字渐显 (原生矢量级清晰度)
                 if (this.isEndingMode) {
                     this.endingTimer++;
                     ctx.font = `bold ${FONT_SIZE_ENDING}px 'CustomFont', sans-serif`;
                     ctx.fillStyle = HEX_COLOR_ENDING_TEXT;
-
                     this.endingCharData.forEach(item => {
                         if (this.endingTimer >= item.startFrame) {
                             const progress = Math.min(1.0, (this.endingTimer - item.startFrame) / 15.0);
                             ctx.globalAlpha = progress;
-                            const offsetY = (1.0 - progress) * 4.0;
-                            ctx.fillText(item.char, item.x, item.y - offsetY);
+                            ctx.fillText(item.char, item.x, item.y - (1.0 - progress) * 4.0);
                             ctx.globalAlpha = 1.0;
                         }
                     });
@@ -437,71 +514,169 @@
             }
         }
 
-        // 音频渐隐函数
-        function fadeAudio(audio, durationMs) {
-            const startVol = audio.volume;
-            const stepMs = 50;
-            const steps = durationMs / stepMs;
-            const volStep = startVol / steps;
-
-            const interval = setInterval(() => {
-                if (audio.volume > volStep) {
-                    audio.volume -= volStep;
-                } else {
-                    audio.volume = 0;
-                    clearInterval(interval);
-                }
-            }, stepMs);
-        }
-
-        // ================= 严格锁帧主循环 =================
+        // ================= 状态调度与时间 =================
         const rain = new MatrixRain();
         const system = new SuperParticleSystem();
         system.setTarget(0);
 
-        let curState = 0;
-        let timer = 0;
-        let fadeAlpha = 0;
-        let isFadingIn = true;
-        let isStarted = false;
+        let curState = 0, timer = 0, fadeAlpha = 0, isFadingIn = true;
+        let isPlaying = false, isStarted = false;
+        let userVolume = 0.5;
 
-        const TARGET_FPS = 60;
-        const FRAME_INTERVAL = 1000 / TARGET_FPS;
+        // 计算当前全局帧
+        function getGlobalFrame() {
+            let sum = 0;
+            for (let i = 0; i < curState; i++) sum += STATE_DURATIONS[i];
+            return sum + timer;
+        }
+
+        // 跳转至全局帧（进度条拖动核心）
+        function jumpToGlobalFrame(targetFrame) {
+            let acc = 0;
+            for (let i = 0; i < STATE_DURATIONS.length; i++) {
+                if (targetFrame < acc + STATE_DURATIONS[i] || i === STATE_DURATIONS.length - 1) {
+                    curState = i;
+                    timer = targetFrame - acc;
+                    system.setTarget(curState);
+                    break;
+                }
+                acc += STATE_DURATIONS[i];
+            }
+            if (bgm.duration) {
+                bgm.currentTime = (targetFrame / TOTAL_FRAMES) * bgm.duration;
+            }
+        }
+
+        function formatTime(seconds) {
+            const m = Math.floor(seconds / 60);
+            const s = Math.floor(seconds % 60);
+            return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+        }
+
+        // ================= 播放器交互 UI 逻辑 =================
+        const playerUI = document.getElementById('player-ui');
+        const progressBar = document.getElementById('progress-bar');
+        const currentTimeEl = document.getElementById('current-time');
+        const totalTimeEl = document.getElementById('total-time');
+        const playIcon = document.getElementById('play-icon');
+        const volumeIcon = document.getElementById('volume-icon');
+        const volumeSlider = document.getElementById('volume-slider');
+        let hideUITimer = null;
+
+        function showUI() {
+            if (!isStarted) return;
+            playerUI.classList.add('active');
+            clearTimeout(hideUITimer);
+            hideUITimer = setTimeout(() => {
+                if (isPlaying) playerUI.classList.remove('active');
+            }, 3000);
+        }
+
+        window.addEventListener('mousemove', showUI);
+        window.addEventListener('touchstart', showUI);
+
+        function togglePlay() {
+            isPlaying = !isPlaying;
+            if (isPlaying) {
+                bgm.play().catch(() => {});
+                playIcon.innerText = '❚❚';
+            } else {
+                bgm.pause();
+                playIcon.innerText = '▶';
+                playerUI.classList.add('active');
+            }
+        }
+
+        // 空格键控制播放暂停
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                togglePlay();
+            }
+        });
+
+        function seek(e) {
+            const rect = document.getElementById('progress-container').getBoundingClientRect();
+            const clickX = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+            const ratio = clickX / rect.width;
+            jumpToGlobalFrame(Math.floor(ratio * TOTAL_FRAMES));
+        }
+
+        function changeVolume(val) {
+            userVolume = parseFloat(val);
+            bgm.volume = userVolume;
+            bgm.muted = false;
+            volumeIcon.innerText = userVolume === 0 ? '🔇' : '🔊';
+        }
+
+        function toggleMute() {
+            if (bgm.muted || bgm.volume === 0) {
+                bgm.muted = false;
+                bgm.volume = userVolume || 0.5;
+                volumeSlider.value = bgm.volume;
+                volumeIcon.innerText = '🔊';
+            } else {
+                bgm.muted = true;
+                volumeSlider.value = 0;
+                volumeIcon.innerText = '🔇';
+            }
+        }
+
+        // 全屏与自动横屏锁定
+        async function toggleFullscreen() {
+            try {
+                if (!document.fullscreenElement) {
+                    await document.documentElement.requestFullscreen();
+                    if (screen.orientation && screen.orientation.lock) {
+                        await screen.orientation.lock('landscape').catch(() => {});
+                    }
+                } else {
+                    if (document.exitFullscreen) await document.exitFullscreen();
+                }
+            } catch (err) {}
+        }
+
+        // ================= 严格锁帧主循环 =================
+        const TARGET_FPS = 60, FRAME_INTERVAL = 1000 / TARGET_FPS;
         let lastTime = performance.now();
 
         function animate(currentTime) {
             requestAnimationFrame(animate);
-
             const elapsed = currentTime - lastTime;
             if (elapsed < FRAME_INTERVAL) return;
             lastTime = currentTime - (elapsed % FRAME_INTERVAL);
 
-            timer++;
-            if (timer > STATE_DURATIONS[curState]) {
-                if (curState < STATE_DURATIONS.length - 1) {
-                    timer = 0;
-                    curState++;
-                    system.setTarget(curState);
-                } else {
-                    fadeAlpha += 0.02;
-                    if (fadeAlpha >= 1.0) {
-                        curState = 0;
+            if (isPlaying) {
+                timer++;
+                if (timer > STATE_DURATIONS[curState]) {
+                    if (curState < STATE_DURATIONS.length - 1) {
                         timer = 0;
-                        system.setTarget(0);
-                        bgm.currentTime = 0;
-                        bgm.volume = 0.5;
-                        bgm.play();
-                        isFadingIn = true;
+                        curState++;
+                        system.setTarget(curState);
+                    } else {
+                        fadeAlpha += 0.02;
+                        if (fadeAlpha >= 1.0) {
+                            curState = 0; timer = 0;
+                            system.setTarget(0);
+                            bgm.currentTime = 0;
+                            bgm.volume = userVolume;
+                            bgm.play().catch(() => {});
+                            isFadingIn = true;
+                        }
                     }
                 }
-            }
 
-            if (isFadingIn) {
-                fadeAlpha -= 0.02;
-                if (fadeAlpha <= 0) {
-                    fadeAlpha = 0;
-                    isFadingIn = false;
+                if (isFadingIn) {
+                    fadeAlpha -= 0.02;
+                    if (fadeAlpha <= 0) { fadeAlpha = 0; isFadingIn = false; }
                 }
+
+                // 进度条与时间更新
+                const curFrame = getGlobalFrame();
+                const progressPct = (curFrame / TOTAL_FRAMES) * 100;
+                progressBar.style.width = `${progressPct}%`;
+                currentTimeEl.innerText = formatTime(curFrame / FPS);
+                totalTimeEl.innerText = formatTime(TOTAL_FRAMES / FPS);
             }
 
             rain.draw();
@@ -516,13 +691,13 @@
         function startApp() {
             if (isStarted) return;
             isStarted = true;
+            isPlaying = true;
             document.getElementById('start-overlay').style.opacity = '0';
-            setTimeout(() => {
-                document.getElementById('start-overlay').style.display = 'none';
-            }, 800);
+            setTimeout(() => { document.getElementById('start-overlay').style.display = 'none'; }, 800);
 
-            bgm.volume = 0.5;
+            bgm.volume = userVolume;
             bgm.play().catch(() => {});
+            showUI();
             lastTime = performance.now();
             requestAnimationFrame(animate);
         }
