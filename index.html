@@ -28,14 +28,13 @@
             width: 100%;
             height: 100%;
         }
-        /* 移动端首次点击启动界面（手机浏览器要求用户点击后才能播放音乐） */
         #start-overlay {
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.85);
+            background: rgba(0, 0, 0, 0.88);
             display: flex;
             flex-direction: column;
             justify-content: center;
@@ -63,19 +62,16 @@
 </head>
 <body>
 
-    <!-- 启动引导遮罩 -->
     <div id="start-overlay" onclick="startApp()">
         <div class="moon-icon">🌕</div>
         <div class="start-text">点击开启中秋祝福</div>
     </div>
 
-    <!-- 核心画布与音频 -->
     <canvas id="canvas"></canvas>
-    <!-- 建议在仓库放置 bgm.mp3，兼容性最好 -->
     <audio id="bgm" src="bgm.mp3" loop preload="auto"></audio>
 
     <script>
-        // ================= 配置参数 =================
+        // ================= 配置参数（与 Python 严格保持 1:1） =================
         const HEX_COLORS_RAIN = ["#6e9dad", "#b36879", "#ad9a50", "#afaaaa"];
         const HEX_COLOR_HEART = "#f688a7";
         const HEX_COLOR_CENTER_TEXT = "#FFF066";
@@ -85,10 +81,10 @@
         const MATRIX_CHARS = "中秋快乐皆如所愿阖家团圆岁岁平安月圆人圆";
         const ENDING_TEXT = "此生风月愿同携\n岁岁晨昏共执蹄";
 
-        // 对应帧数控制（60帧 = 1秒）
+        // 各状态停留时长（完全对应 Python 里的 STATE_DURATIONS）
         const STATE_DURATIONS = [65, 65, 65, 90, 90, 110, 110, 3720, 312];
 
-        // ================= 初始化画布与参数 =================
+        // ================= 初始化画布 =================
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
         const bgm = document.getElementById('bgm');
@@ -100,14 +96,12 @@
             HEIGHT = window.innerHeight;
             canvas.width = WIDTH;
             canvas.height = HEIGHT;
-            // 根据屏幕大小计算自适应缩放比
             scaleFactor = Math.min(WIDTH / 1000, HEIGHT / 720);
-            if (scaleFactor < 0.6) scaleFactor = 0.6; // 手机屏幕保底缩放
+            if (scaleFactor < 0.65) scaleFactor = 0.65;
         }
         window.addEventListener('resize', resize);
         resize();
 
-        // 预生成小爱心纹理
         function createHeartCanvas(size, color) {
             const hCanvas = document.createElement('canvas');
             hCanvas.width = size;
@@ -130,16 +124,17 @@
         // ================= 背景代码雨 =================
         class MatrixRain {
             constructor() {
-                this.fontSize = 18 * scaleFactor;
+                this.fontSize = 20 * scaleFactor;
                 this.colSpacing = 16 * scaleFactor;
                 this.cols = Math.floor(WIDTH / this.colSpacing);
                 this.drops = Array.from({ length: this.cols }, () => Math.random() * -30);
-                this.speeds = Array.from({ length: this.cols }, () => 0.4 + Math.random() * 1.0);
+                // 速率校准与 Python 完全一致 (0.3 ~ 1.0)
+                this.speeds = Array.from({ length: this.cols }, () => 0.3 + Math.random() * 0.7);
                 this.colColors = Array.from({ length: this.cols }, () => HEX_COLORS_RAIN[Math.floor(Math.random() * HEX_COLORS_RAIN.length)]);
             }
 
             draw() {
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
                 ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
                 ctx.font = `${this.fontSize}px 'CustomFont', sans-serif`;
@@ -155,12 +150,12 @@
                         this.drops[i] = 0;
                         this.colColors[i] = HEX_COLORS_RAIN[Math.floor(Math.random() * HEX_COLORS_RAIN.length)];
                     }
-                    this.drops[i] += this.speeds[i] * 0.25;
+                    this.drops[i] += this.speeds[i] * 0.18; // 与 Python 保持 0.18 步长
                 }
             }
         }
 
-        // ================= 粒子取样工具 =================
+        // ================= 粒子采样 =================
         function sampleText(text, fontSize, step) {
             const offCanvas = document.createElement('canvas');
             const offCtx = offCanvas.getContext('2d');
@@ -179,7 +174,7 @@
             const points = [];
             for (let x = 0; x < w; x += step) {
                 for (let y = 0; y < h; y += step) {
-                    if (imgData[(y * w + x) * 4 + 3] > 128) {
+                    if (imgData[(y * w + x) * 4 + 3] > 120) {
                         points.push({
                             x: WIDTH / 2 - w / 2 + x,
                             y: HEIGHT / 2 - h / 2 + y
@@ -199,7 +194,7 @@
             };
         }
 
-        // ================= 爆发火花与主粒子系统 =================
+        // ================= 主粒子系统 =================
         class SuperParticleSystem {
             constructor() {
                 this.particles = [];
@@ -252,23 +247,22 @@
 
                 if (this.isHeartMode) {
                     this.heartBorderPoints = [];
-                    const heartScale = 14;
+                    const heartScale = 15;
                     for (let i = 0; i < 1100; i++) {
                         const t = Math.random() * Math.PI * 2;
-                        const s = heartScale + (Math.random() - 0.5) * 2.8;
+                        const s = heartScale + (Math.random() - 0.5) * 3.0;
                         const pt = getHeartPoint(t, s);
                         targets.push({ x: pt.x, y: pt.y, type: 'heart' });
-                        if (Math.abs(s - heartScale) < 0.6) {
+                        if (Math.abs(s - heartScale) < 0.8) {
                             this.heartBorderPoints.push(pt);
                         }
                     }
                     const centerPts = sampleText("中秋快乐", Math.floor(52 * scaleFactor), 4);
                     centerPts.forEach(pt => targets.push({ x: pt.x, y: pt.y, type: 'text' }));
                 } else if (this.isEndingMode) {
-                    fadeAudio(bgm, 2500); // 音乐 2.5 秒平滑淡出
+                    fadeAudio(bgm, 2500); // 音乐精准 2.5 秒淡出
                     this.prepareEndingText();
 
-                    // 爱心消散化为星光
                     this.particles.forEach(p => {
                         const angle = Math.atan2(p.y - (HEIGHT / 2 - 25), p.x - WIDTH / 2) + (Math.random() - 0.5) * 0.8;
                         const spd = 1.5 + Math.random() * 3.5;
@@ -286,7 +280,6 @@
                     pts.forEach(pt => targets.push({ x: pt.x, y: pt.y, type: 'normal' }));
                 }
 
-                // 调整粒子总数
                 while (this.particles.length < targets.length) {
                     this.particles.push({ x: Math.random() * WIDTH, y: Math.random() * HEIGHT, type: 'normal' });
                 }
@@ -305,14 +298,13 @@
             draw() {
                 let swayX = 0, swayY = 0, pulse = 0;
                 if (this.isHeartMode) {
-                    this.swayTimer += 0.02;
-                    swayX = Math.sin(this.swayTimer) * 16 * scaleFactor;
-                    swayY = Math.cos(this.swayTimer * 0.7) * 10 * scaleFactor;
+                    this.swayTimer += 0.020; // 与 Python 一致的慢悠悠晃动速度
+                    swayX = Math.sin(this.swayTimer) * 17 * scaleFactor;
+                    swayY = Math.cos(this.swayTimer * 0.7) * 11 * scaleFactor;
                     pulse = Math.sin(this.heartPulse) * 3.5;
                     this.heartPulse += 0.08;
                 }
 
-                // 1. 粒子运动与绘制
                 if (this.isEndingMode) {
                     this.particles.forEach(p => {
                         if (p.alpha > 0) {
@@ -350,12 +342,11 @@
                     });
                 }
 
-                // 2. 爱心爆发火花
                 if (this.isHeartMode && this.heartBorderPoints.length > 0) {
                     for (let i = 0; i < 6; i++) {
                         const bp = this.heartBorderPoints[Math.floor(Math.random() * this.heartBorderPoints.length)];
                         const angle = Math.atan2(bp.y - (HEIGHT / 2 - 20), bp.x - WIDTH / 2);
-                        const spd = 1.2 + Math.random() * 2.5;
+                        const spd = 1.2 + Math.random() * 2.0;
                         this.sparks.push({
                             x: bp.x + swayX,
                             y: bp.y + swayY,
@@ -387,7 +378,6 @@
                     }
                 }
 
-                // 3. 结束语逐字浮现
                 if (this.isEndingMode) {
                     this.endingTimer++;
                     ctx.font = `bold ${Math.floor(48 * scaleFactor)}px 'CustomFont', sans-serif`;
@@ -406,7 +396,6 @@
             }
         }
 
-        // 音频平滑淡出辅助
         function fadeAudio(audio, durationMs) {
             const startVol = audio.volume;
             const stepMs = 50;
@@ -423,7 +412,7 @@
             }, stepMs);
         }
 
-        // ================= 状态机大循环 =================
+        // ================= 【核心】：强制锁定 60 FPS 计时器 =================
         const rain = new MatrixRain();
         const system = new SuperParticleSystem();
         system.setTarget(0);
@@ -434,7 +423,19 @@
         let isFadingIn = true;
         let isStarted = false;
 
-        function animate() {
+        const TARGET_FPS = 60;
+        const FRAME_INTERVAL = 1000 / TARGET_FPS; // 严格每帧 16.67ms
+        let lastTime = performance.now();
+
+        function animate(currentTime) {
+            requestAnimationFrame(animate);
+
+            // 严格防加速判断：高刷屏未到 1/60 秒直接跳过渲染
+            const elapsed = currentTime - lastTime;
+            if (elapsed < FRAME_INTERVAL) return;
+
+            lastTime = currentTime - (elapsed % FRAME_INTERVAL);
+
             timer++;
             if (timer > STATE_DURATIONS[curState]) {
                 if (curState < STATE_DURATIONS.length - 1) {
@@ -470,11 +471,8 @@
                 ctx.fillStyle = `rgba(0, 0, 0, ${Math.min(1.0, fadeAlpha)})`;
                 ctx.fillRect(0, 0, WIDTH, HEIGHT);
             }
-
-            requestAnimationFrame(animate);
         }
 
-        // 启动应用
         function startApp() {
             if (isStarted) return;
             isStarted = true;
@@ -485,7 +483,8 @@
 
             bgm.volume = 0.5;
             bgm.play().catch(() => {});
-            animate();
+            lastTime = performance.now();
+            requestAnimationFrame(animate);
         }
     </script>
 </body>
