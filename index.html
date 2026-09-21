@@ -21,12 +21,19 @@
             height: 100%;
             overflow: hidden;
             background-color: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
             font-family: 'CustomFont', -apple-system, sans-serif;
         }
+        /* 核心：等比自适应投影，保证 1000x720 比例完美还原，不拉伸不变形 */
         #canvas {
+            width: 100vw;
+            height: 100vh;
+            max-width: calc(100vh * (1000 / 720));
+            max-height: calc(100vw * (720 / 1000));
+            object-fit: contain;
             display: block;
-            width: 100%;
-            height: 100%;
         }
         #start-overlay {
             position: fixed;
@@ -67,41 +74,63 @@
         <div class="start-text">点击开启中秋祝福</div>
     </div>
 
-    <canvas id="canvas"></canvas>
+    <!-- 内部渲染分辨率锁定为 1000 x 720 -->
+    <canvas id="canvas" width="1000" height="720"></canvas>
     <audio id="bgm" src="bgm.mp3" loop preload="auto"></audio>
 
     <script>
-        // ================= 配置参数（与 Python 严格保持 1:1） =================
+        // ==============================================================================
+        //           【参数配置：与 VS 里的 Python 代码完全保持 100% 精确一致】
+        // ==============================================================================
+        const WIDTH = 1000;
+        const HEIGHT = 720;
+        const FPS = 60;
+
+        // A. 背景代码雨独立配置
+        const FONT_SIZE_MATRIX = 20;           // 代码雨字号 (与VS一致)
+        const MATRIX_COL_SPACING = 3;          // 列间距 3 (与VS一致，致密震撼)
+        const MATRIX_SPEED_MIN = 0.3;          // 最小速度 (与VS一致)
+        const MATRIX_SPEED_MAX = 1.0;          // 最大速度 (与VS一致)
+        const FADE_TRAIL_ALPHA = 25 / 255;     // 拖影透明度 (与VS一致)
+        const MATRIX_CHARS = "中秋快乐皆如所愿阖家团圆岁岁平安月圆人圆";
+
         const HEX_COLORS_RAIN = ["#6e9dad", "#b36879", "#ad9a50", "#afaaaa"];
+
+        // B. 爱心与爆发火花独立配置
         const HEX_COLOR_HEART = "#f688a7";
         const HEX_COLOR_CENTER_TEXT = "#FFF066";
         const HEX_COLORS_SPARKS = ["#6e9dad", "#FF85A1", "#FFE066", "#FFFFFF"];
-        const HEX_COLOR_ENDING_TEXT = "#FFFFFF";
 
-        const MATRIX_CHARS = "中秋快乐皆如所愿阖家团圆岁岁平安月圆人圆";
+        const MINI_HEART_SIZE = 7;             // 爱心小粒子大小 7 (与VS一致)
+        const HEART_SCALE = 15;                // 爱心大小 15 (与VS一致)
+        const HEART_THICKNESS = 3;             // 爱心厚度 3 (与VS一致)
+        const HEART_BURST_COUNT = 15;          // 每帧爆发火花数量 15 (与VS一致)
+        const HEART_BURST_SPEED = 2.0;         // 爆发初速度 2.0 (与VS一致)
+
+        const HEART_SWAY_AMP_X = 17.0;         // 左右晃动幅度 17 (与VS一致)
+        const HEART_SWAY_AMP_Y = 11.0;         // 上下晃动幅度 11 (与VS一致)
+        const HEART_SWAY_SPEED = 0.020;        // 漂浮速度 0.02 (与VS一致)
+
+        // C. 前景文字独立配置
+        const FONT_SIZE_LARGE = 190;           // 倒计时、祝福语字号 190 (与VS一致)
+        const FONT_SIZE_CENTER = 60;           // 爱心内部“中秋快乐”字号 60 (与VS一致)
+
+        // D. 结束画面配置
         const ENDING_TEXT = "此生风月愿同携\n岁岁晨昏共执蹄";
+        const FONT_SIZE_ENDING = 54;           // 结束语字号 54 (与VS一致)
+        const HEX_COLOR_ENDING_TEXT = "#FFFFFF";
+        const CHAR_APPEAR_INTERVAL = 10;
+        const ENDING_DURATION = 312;
 
-        // 各状态停留时长（完全对应 Python 里的 STATE_DURATIONS）
-        const STATE_DURATIONS = [65, 65, 65, 90, 90, 110, 110, 3720, 312];
+        // 状态持续时间
+        const STATE_DURATIONS = [65, 65, 65, 90, 90, 110, 110, 3720, ENDING_DURATION];
 
         // ================= 初始化画布 =================
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
         const bgm = document.getElementById('bgm');
 
-        let WIDTH, HEIGHT, scaleFactor = 1.0;
-
-        function resize() {
-            WIDTH = window.innerWidth;
-            HEIGHT = window.innerHeight;
-            canvas.width = WIDTH;
-            canvas.height = HEIGHT;
-            scaleFactor = Math.min(WIDTH / 1000, HEIGHT / 720);
-            if (scaleFactor < 0.65) scaleFactor = 0.65;
-        }
-        window.addEventListener('resize', resize);
-        resize();
-
+        // 生成迷你小爱心纹理 (大小与 VS 一致: 7px)
         function createHeartCanvas(size, color) {
             const hCanvas = document.createElement('canvas');
             hCanvas.width = size;
@@ -118,39 +147,37 @@
             return hCanvas;
         }
 
-        const heartTexture = createHeartCanvas(12, HEX_COLOR_HEART);
-        const centerTextTexture = createHeartCanvas(9, HEX_COLOR_CENTER_TEXT);
+        const heartTexture = createHeartCanvas(MINI_HEART_SIZE, HEX_COLOR_HEART);
+        const centerTextTexture = createHeartCanvas(MINI_HEART_SIZE - 2, HEX_COLOR_CENTER_TEXT);
 
-        // ================= 背景代码雨 =================
+        // ================= 背景代码雨 (与 VS 逻辑 100% 对齐) =================
         class MatrixRain {
             constructor() {
-                this.fontSize = 20 * scaleFactor;
-                this.colSpacing = 16 * scaleFactor;
-                this.cols = Math.floor(WIDTH / this.colSpacing);
-                this.drops = Array.from({ length: this.cols }, () => Math.random() * -30);
-                // 速率校准与 Python 完全一致 (0.3 ~ 1.0)
-                this.speeds = Array.from({ length: this.cols }, () => 0.3 + Math.random() * 0.7);
+                this.cols = Math.floor(WIDTH / MATRIX_COL_SPACING); // 约 333 列
+                this.drops = Array.from({ length: this.cols }, () => -Math.random() * 40);
+                this.speeds = Array.from({ length: this.cols }, () => MATRIX_SPEED_MIN + Math.random() * (MATRIX_SPEED_MAX - MATRIX_SPEED_MIN));
                 this.colColors = Array.from({ length: this.cols }, () => HEX_COLORS_RAIN[Math.floor(Math.random() * HEX_COLORS_RAIN.length)]);
             }
 
             draw() {
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+                // 拖影透明度与 VS (25/255) 严格一致
+                ctx.fillStyle = `rgba(0, 0, 0, ${FADE_TRAIL_ALPHA})`;
                 ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-                ctx.font = `${this.fontSize}px 'CustomFont', sans-serif`;
+                ctx.font = `${FONT_SIZE_MATRIX}px 'CustomFont', sans-serif`;
                 for (let i = 0; i < this.cols; i++) {
                     const char = MATRIX_CHARS[Math.floor(Math.random() * MATRIX_CHARS.length)];
                     ctx.fillStyle = this.colColors[i];
                     
-                    const x = i * this.colSpacing;
-                    const y = this.drops[i] * this.fontSize;
+                    const x = i * MATRIX_COL_SPACING;
+                    const y = this.drops[i] * FONT_SIZE_MATRIX;
                     ctx.fillText(char, x, y);
 
                     if (y > HEIGHT && Math.random() > 0.96) {
                         this.drops[i] = 0;
                         this.colColors[i] = HEX_COLORS_RAIN[Math.floor(Math.random() * HEX_COLORS_RAIN.length)];
                     }
-                    this.drops[i] += this.speeds[i] * 0.18; // 与 Python 保持 0.18 步长
+                    this.drops[i] += this.speeds[i] * 0.18; // 0.18 步进完全一致
                 }
             }
         }
@@ -161,14 +188,14 @@
             const offCtx = offCanvas.getContext('2d');
             offCtx.font = `bold ${fontSize}px 'CustomFont', sans-serif`;
             const metrics = offCtx.measureText(text);
-            const w = Math.ceil(metrics.width) + 20;
+            const w = Math.ceil(metrics.width) + 30;
             const h = Math.ceil(fontSize * 1.3);
             offCanvas.width = w;
             offCanvas.height = h;
 
             offCtx.font = `bold ${fontSize}px 'CustomFont', sans-serif`;
             offCtx.fillStyle = '#FFFFFF';
-            offCtx.fillText(text, 10, fontSize);
+            offCtx.fillText(text, 15, fontSize);
 
             const imgData = offCtx.getImageData(0, 0, w, h).data;
             const points = [];
@@ -189,9 +216,17 @@
             const x = 16 * Math.pow(Math.sin(t), 3);
             const y = -(13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t));
             return {
-                x: WIDTH / 2 + x * scale * scaleFactor,
-                y: HEIGHT / 2 + y * scale * scaleFactor - 20 * scaleFactor
+                x: WIDTH / 2 + x * scale,
+                y: HEIGHT / 2 + y * scale - 25
             };
+        }
+
+        // 高斯随机分布辅助 (模拟 Python 中的 random.gauss)
+        function randomGaussian(mean, stdev) {
+            let u = 1 - Math.random();
+            let v = Math.random();
+            let z = Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+            return mean + z * stdev;
         }
 
         // ================= 主粒子系统 =================
@@ -212,12 +247,11 @@
                 this.endingTimer = 0;
                 this.endingCharData = [];
                 const lines = ENDING_TEXT.split('\n');
-                const fontSize = Math.floor(48 * scaleFactor);
-                const lineSpacing = 24 * scaleFactor;
-                const totalH = lines.length * fontSize + (lines.length - 1) * lineSpacing;
+                const lineSpacing = 26;
+                const totalH = lines.length * FONT_SIZE_ENDING + (lines.length - 1) * lineSpacing;
                 let curY = HEIGHT / 2 - totalH / 2;
 
-                ctx.font = `bold ${fontSize}px 'CustomFont', sans-serif`;
+                ctx.font = `bold ${FONT_SIZE_ENDING}px 'CustomFont', sans-serif`;
                 let globalCharIdx = 0;
 
                 lines.forEach((line, lineIdx) => {
@@ -230,13 +264,13 @@
                         this.endingCharData.push({
                             char: ch,
                             x: curX,
-                            y: curY + fontSize,
-                            startFrame: globalCharIdx * 10 + pause
+                            y: curY + FONT_SIZE_ENDING,
+                            startFrame: globalCharIdx * CHAR_APPEAR_INTERVAL + pause
                         });
                         curX += cw;
                         globalCharIdx++;
                     }
-                    curY += fontSize + lineSpacing;
+                    curY += FONT_SIZE_ENDING + lineSpacing;
                 });
             }
 
@@ -247,36 +281,40 @@
 
                 if (this.isHeartMode) {
                     this.heartBorderPoints = [];
-                    const heartScale = 15;
-                    for (let i = 0; i < 1100; i++) {
+                    // 与 VS 完全一致：生成 1300 颗爱心粒子 + 高斯星云厚度分布
+                    for (let i = 0; i < 1300; i++) {
                         const t = Math.random() * Math.PI * 2;
-                        const s = heartScale + (Math.random() - 0.5) * 3.0;
+                        const scaleOffset = randomGaussian(0, HEART_THICKNESS * 0.45);
+                        const s = HEART_SCALE + scaleOffset;
                         const pt = getHeartPoint(t, s);
                         targets.push({ x: pt.x, y: pt.y, type: 'heart' });
-                        if (Math.abs(s - heartScale) < 0.8) {
+                        if (Math.abs(scaleOffset) < 0.8) {
                             this.heartBorderPoints.push(pt);
                         }
                     }
-                    const centerPts = sampleText("中秋快乐", Math.floor(52 * scaleFactor), 4);
+                    // 中心文字“中秋快乐” (字号 60, step=4)
+                    const centerPts = sampleText("中秋快乐", FONT_SIZE_CENTER, 4);
                     centerPts.forEach(pt => targets.push({ x: pt.x, y: pt.y, type: 'text' }));
                 } else if (this.isEndingMode) {
-                    fadeAudio(bgm, 2500); // 音乐精准 2.5 秒淡出
+                    fadeAudio(bgm, 2500); // 音乐 2.5 秒精准淡出
                     this.prepareEndingText();
 
+                    // 爱心粒子向外炸开化为星尘
                     this.particles.forEach(p => {
                         const angle = Math.atan2(p.y - (HEIGHT / 2 - 25), p.x - WIDTH / 2) + (Math.random() - 0.5) * 0.8;
                         const spd = 1.5 + Math.random() * 3.5;
                         p.vx = Math.cos(angle) * spd;
                         p.vy = Math.sin(angle) * spd;
-                        p.alpha = 1.0;
-                        p.decay = 0.008 + Math.random() * 0.015;
+                        p.alpha = 255.0;
+                        p.decay = 1.2 + Math.random() * 1.6;
                         p.type = 'stardust';
                         p.color = HEX_COLORS_SPARKS[Math.floor(Math.random() * HEX_COLORS_SPARKS.length)];
                     });
                     return;
                 } else {
                     const seq = ["3", "2", "1", "亲爱的", "祝 你", "中秋快乐", "岁岁无忧"];
-                    const pts = sampleText(seq[stateIdx], Math.floor(160 * scaleFactor), 6);
+                    // 大字字号 190, step=6 (与VS完全一致)
+                    const pts = sampleText(seq[stateIdx], FONT_SIZE_LARGE, 6);
                     pts.forEach(pt => targets.push({ x: pt.x, y: pt.y, type: 'normal' }));
                 }
 
@@ -298,13 +336,14 @@
             draw() {
                 let swayX = 0, swayY = 0, pulse = 0;
                 if (this.isHeartMode) {
-                    this.swayTimer += 0.020; // 与 Python 一致的慢悠悠晃动速度
-                    swayX = Math.sin(this.swayTimer) * 17 * scaleFactor;
-                    swayY = Math.cos(this.swayTimer * 0.7) * 11 * scaleFactor;
+                    this.swayTimer += HEART_SWAY_SPEED;
+                    swayX = Math.sin(this.swayTimer) * HEART_SWAY_AMP_X;
+                    swayY = Math.cos(this.swayTimer * 0.7) * HEART_SWAY_AMP_Y;
                     pulse = Math.sin(this.heartPulse) * 3.5;
                     this.heartPulse += 0.08;
                 }
 
+                // 1. 绘制主体粒子
                 if (this.isEndingMode) {
                     this.particles.forEach(p => {
                         if (p.alpha > 0) {
@@ -314,7 +353,7 @@
                             p.vy *= 0.985;
                             p.alpha = Math.max(0, p.alpha - p.decay);
 
-                            ctx.globalAlpha = p.alpha;
+                            ctx.globalAlpha = p.alpha / 255;
                             ctx.fillStyle = p.color;
                             ctx.beginPath();
                             ctx.arc(p.x, p.y, 1.5, 0, Math.PI * 2);
@@ -330,23 +369,24 @@
                         const fy = p.y + swayY + pulse;
 
                         if (p.type === 'heart') {
-                            ctx.drawImage(heartTexture, fx - 6, fy - 6);
+                            ctx.drawImage(heartTexture, fx - MINI_HEART_SIZE / 2, fy - MINI_HEART_SIZE / 2);
                         } else if (p.type === 'text') {
-                            ctx.drawImage(centerTextTexture, fx - 4.5, fy - 4.5);
+                            ctx.drawImage(centerTextTexture, fx - (MINI_HEART_SIZE - 2) / 2, fy - (MINI_HEART_SIZE - 2) / 2);
                         } else {
                             ctx.fillStyle = '#FFFFFF';
                             ctx.beginPath();
-                            ctx.arc(fx, fy, 2.5, 0, Math.PI * 2);
+                            ctx.arc(fx, fy, 3, 0, Math.PI * 2);
                             ctx.fill();
                         }
                     });
                 }
 
+                // 2. 爱心爆发火花 (与VS完全一致：每帧15颗)
                 if (this.isHeartMode && this.heartBorderPoints.length > 0) {
-                    for (let i = 0; i < 6; i++) {
+                    for (let i = 0; i < HEART_BURST_COUNT; i++) {
                         const bp = this.heartBorderPoints[Math.floor(Math.random() * this.heartBorderPoints.length)];
-                        const angle = Math.atan2(bp.y - (HEIGHT / 2 - 20), bp.x - WIDTH / 2);
-                        const spd = 1.2 + Math.random() * 2.0;
+                        const angle = Math.atan2(bp.y - (HEIGHT / 2 - 25), bp.x - WIDTH / 2);
+                        const spd = 1.2 + Math.random() * HEART_BURST_SPEED;
                         this.sparks.push({
                             x: bp.x + swayX,
                             y: bp.y + swayY,
@@ -378,9 +418,10 @@
                     }
                 }
 
+                // 3. 结束语逐字渐显 (原生矢量级清晰度)
                 if (this.isEndingMode) {
                     this.endingTimer++;
-                    ctx.font = `bold ${Math.floor(48 * scaleFactor)}px 'CustomFont', sans-serif`;
+                    ctx.font = `bold ${FONT_SIZE_ENDING}px 'CustomFont', sans-serif`;
                     ctx.fillStyle = HEX_COLOR_ENDING_TEXT;
 
                     this.endingCharData.forEach(item => {
@@ -396,6 +437,7 @@
             }
         }
 
+        // 音频渐隐函数
         function fadeAudio(audio, durationMs) {
             const startVol = audio.volume;
             const stepMs = 50;
@@ -412,7 +454,7 @@
             }, stepMs);
         }
 
-        // ================= 【核心】：强制锁定 60 FPS 计时器 =================
+        // ================= 严格锁帧主循环 =================
         const rain = new MatrixRain();
         const system = new SuperParticleSystem();
         system.setTarget(0);
@@ -424,16 +466,14 @@
         let isStarted = false;
 
         const TARGET_FPS = 60;
-        const FRAME_INTERVAL = 1000 / TARGET_FPS; // 严格每帧 16.67ms
+        const FRAME_INTERVAL = 1000 / TARGET_FPS;
         let lastTime = performance.now();
 
         function animate(currentTime) {
             requestAnimationFrame(animate);
 
-            // 严格防加速判断：高刷屏未到 1/60 秒直接跳过渲染
             const elapsed = currentTime - lastTime;
             if (elapsed < FRAME_INTERVAL) return;
-
             lastTime = currentTime - (elapsed % FRAME_INTERVAL);
 
             timer++;
