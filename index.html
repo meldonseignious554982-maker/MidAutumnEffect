@@ -28,7 +28,6 @@
             -webkit-font-smoothing: antialiased;
         }
 
-        /* 修复 CSS calc 兼容性：使用标准浮点乘法，全浏览器 100% 兼容无黑屏 */
         #canvas {
             width: 100vw;
             height: 100vh;
@@ -69,7 +68,6 @@
             50% { transform: scale(1.15); opacity: 1; }
         }
 
-        /* 仿 X 现代悬浮控制栏 */
         #player-ui {
             position: fixed;
             bottom: 0;
@@ -318,7 +316,7 @@
             }
         }
 
-        // ================= 粒子采样 (修复步长取整防空) =================
+        // ================= 粒子采样 =================
         function sampleText(text, fontSize, step) {
             const offCanvas = document.createElement('canvas');
             const offCtx = offCanvas.getContext('2d');
@@ -538,7 +536,6 @@
         let isPlaying = false, isStarted = false;
         let userVolume = 0.5;
 
-        // 核心容错：安全修改音量，绝不抛出异常阻塞页面
         function applyVolume(vol) {
             try {
                 if (bgm) {
@@ -599,20 +596,23 @@
         window.addEventListener('mousemove', showUI);
         window.addEventListener('touchstart', showUI, { passive: true });
 
+        // 【核心修复】：真正的音视频同步暂停/恢复
         function togglePlay() {
             if (!isStarted) return;
             isPlaying = !isPlaying;
             if (isPlaying) {
+                // 恢复播放时重新对准高精时间戳，消除跳帧
+                lastTime = performance.now();
                 if (bgm) bgm.play().catch(() => {});
                 playIcon.innerText = '❚❚';
             } else {
+                // 暂停时立刻静止声音，并呼出控制栏
                 if (bgm) bgm.pause();
                 playIcon.innerText = '▶';
                 playerUI.classList.add('active');
             }
         }
 
-        // 点击画布也可切换播放暂停
         canvas.addEventListener('click', () => {
             if (isStarted) togglePlay();
         });
@@ -629,6 +629,20 @@
             const clickX = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
             const ratio = clickX / rect.width;
             jumpToGlobalFrame(Math.floor(ratio * TOTAL_FRAMES));
+
+            // 【核心特性】：如果暂停时拖动进度条，立刻刷新重绘目标帧定格画面！
+            if (!isPlaying) {
+                ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+                ctx.fillStyle = '#000';
+                ctx.fillRect(0, 0, WIDTH, HEIGHT);
+                rain.draw();
+                system.draw();
+
+                const curFrame = getGlobalFrame();
+                const progressPct = (curFrame / TOTAL_FRAMES) * 100;
+                progressBar.style.width = `${progressPct}%`;
+                currentTimeEl.innerText = formatTime(curFrame / FPS);
+            }
         }
 
         function changeVolume(val) {
@@ -668,54 +682,56 @@
 
         function animate(currentTime = performance.now()) {
             requestAnimationFrame(animate);
+
+            // 【核心彻底修复】：一旦暂停，全场物理计算与画面刷新绝对静止，实现真正定格！
+            if (!isPlaying) return;
+
             const elapsed = currentTime - lastTime;
             if (elapsed < FRAME_INTERVAL) return;
             lastTime = currentTime - (elapsed % FRAME_INTERVAL);
 
             ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
 
-            if (isPlaying) {
-                timer++;
+            timer++;
 
-                // 帧驱动平滑音量衰减
-                if (curState === 8) {
-                    const fadeProgress = Math.min(1.0, timer / 150.0);
-                    applyVolume(userVolume * (1.0 - fadeProgress));
+            // 帧驱动音量平滑淡出
+            if (curState === 8) {
+                const fadeProgress = Math.min(1.0, timer / 150.0);
+                applyVolume(userVolume * (1.0 - fadeProgress));
+            } else {
+                applyVolume(userVolume);
+            }
+
+            if (timer > STATE_DURATIONS[curState]) {
+                if (curState < STATE_DURATIONS.length - 1) {
+                    timer = 0;
+                    curState++;
+                    system.setTarget(curState);
                 } else {
-                    applyVolume(userVolume);
-                }
-
-                if (timer > STATE_DURATIONS[curState]) {
-                    if (curState < STATE_DURATIONS.length - 1) {
-                        timer = 0;
-                        curState++;
-                        system.setTarget(curState);
-                    } else {
-                        fadeAlpha += 0.02;
-                        if (fadeAlpha >= 1.0) {
-                            curState = 0; timer = 0;
-                            system.setTarget(0);
-                            if (bgm) {
-                                try { bgm.currentTime = 0; } catch(e) {}
-                                applyVolume(userVolume);
-                                bgm.play().catch(() => {});
-                            }
-                            isFadingIn = true;
+                    fadeAlpha += 0.02;
+                    if (fadeAlpha >= 1.0) {
+                        curState = 0; timer = 0;
+                        system.setTarget(0);
+                        if (bgm) {
+                            try { bgm.currentTime = 0; } catch(e) {}
+                            applyVolume(userVolume);
+                            bgm.play().catch(() => {});
                         }
+                        isFadingIn = true;
                     }
                 }
-
-                if (isFadingIn) {
-                    fadeAlpha -= 0.02;
-                    if (fadeAlpha <= 0) { fadeAlpha = 0; isFadingIn = false; }
-                }
-
-                const curFrame = getGlobalFrame();
-                const progressPct = (curFrame / TOTAL_FRAMES) * 100;
-                progressBar.style.width = `${progressPct}%`;
-                currentTimeEl.innerText = formatTime(curFrame / FPS);
-                totalTimeEl.innerText = formatTime(TOTAL_FRAMES / FPS);
             }
+
+            if (isFadingIn) {
+                fadeAlpha -= 0.02;
+                if (fadeAlpha <= 0) { fadeAlpha = 0; isFadingIn = false; }
+            }
+
+            const curFrame = getGlobalFrame();
+            const progressPct = (curFrame / TOTAL_FRAMES) * 100;
+            progressBar.style.width = `${progressPct}%`;
+            currentTimeEl.innerText = formatTime(curFrame / FPS);
+            totalTimeEl.innerText = formatTime(TOTAL_FRAMES / FPS);
 
             rain.draw();
             system.draw();
@@ -726,7 +742,7 @@
             }
         }
 
-        // ================= 启动函数（双重事件监听，确保必开） =================
+        // ================= 启动函数 =================
         function startApp() {
             if (isStarted) return;
             isStarted = true;
@@ -749,7 +765,6 @@
             requestAnimationFrame(animate);
         }
 
-        // 无论鼠标点击还是手机触控，确保 100% 触发进入
         const overlayEl = document.getElementById('start-overlay');
         overlayEl.addEventListener('click', startApp);
         overlayEl.addEventListener('touchend', (e) => {
