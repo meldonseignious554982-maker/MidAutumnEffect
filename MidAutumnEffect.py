@@ -14,19 +14,21 @@ FPS = 60
 
 FONT_FILENAME = 'ty.ttf'
 FONT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), FONT_FILENAME)
-MUSIC_FILENAME = 'bgm.flac'  
+MUSIC_FILENAME = 'bgm.mp3'  
 MUSIC_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), MUSIC_FILENAME)
 
 
 # ------------------ 【A. 背景代码雨独立配置】 ------------------
-FONT_SIZE_MATRIX = 20          # 代码雨字号
-MATRIX_COL_SPACING = 3        # 列间距（越小越密集）
-MATRIX_SPEED_MIN = 0.3         # 下落最小速度
+FONT_SIZE_MATRIX = 25          # 代码雨字号
+MATRIX_COL_SPACING = 2.8       # 列间距（支持小数微调）
+MATRIX_SPEED_MIN = 0.2         # 下落最小速度
 MATRIX_SPEED_MAX = 1.0         # 下落最大速度
-FADE_TRAIL_ALPHA = 25          # 拖影长度（越小拖影越长）
-MATRIX_CHARS = "中秋快乐皆如所愿阖家团圆岁岁平安月圆人圆"
+FADE_TRAIL_ALPHA = 22          # 拖影长度（越小拖影越长）
+MATRIX_CHARS = "但愿人长久，千里共婵娟。若可，我愿与你共婵娟，也共人间烟火"
 
-# 代码雨独立颜色组
+# 代码雨文字跳变速率
+MATRIX_CHAR_MUTATE_RATE = 0.08
+
 HEX_COLORS_RAIN = [
     "#6e9dad",  # 雾霾蓝
     "#b36879",  # 柔粉
@@ -35,53 +37,114 @@ HEX_COLORS_RAIN = [
 ]
 
 
-# ------------------ 【B. 爱心与爆发火花独立配置】 ------------------
+# ------------------ 【B-1. 爱心本体独立配置】 ------------------
 HEX_COLOR_HEART       = "#f688a7"   # 爱心本体颜色
-HEX_COLOR_CENTER_TEXT = "#FFF066"   # 爱心中文字“中秋快乐”颜色
+HEX_COLOR_CENTER_TEXT = "#FFF066"   # 爱心中心字颜色（暖金黄）
 
+MINI_HEART_SIZE       = 12         # 大爱心本体的粒子大小（保持你的饱满大颗粒）
+HEART_SCALE           = 16         # 爱心大小
+HEART_THICKNESS       = 3          # 爱心厚度
+
+# 【核心优化】：爱心中间汉字独立粒子参数（彻底解决臃肿黏连糊在一起！）
+CENTER_PARTICLE_SIZE  = 5          # 中文字粒子大小（默认4，笔画纤细分明绝不糊，可调 3~5）
+CENTER_TEXT_STEP      = 3          # 文字采样间距
+
+HEART_SWAY_AMP_X      = 17.0       # 左右晃动幅度
+HEART_SWAY_AMP_Y      = 11.0       # 上下晃动幅度
+HEART_SWAY_SPEED      = 0.020      # 漂浮速度
+
+
+# ------------------ 【B-2. 爱心周围扩散火花粒子独立配置】 ------------------
 HEX_COLORS_SPARKS = [
-    "#6e9dad",  # 蓝火花
+    "#c6e2ff",  # 蓝火花
     "#FF85A1",  # 粉火花
     "#FFE066",  # 金火花
     "#FFFFFF"   # 白火花
 ]
 
-MINI_HEART_SIZE   = 7          # 爱心本体的小粒子大小
-HEART_SCALE       = 15         # 爱心大小
-HEART_THICKNESS   = 3          # 爱心厚度
-HEART_BURST_COUNT = 15         # 每帧向外爆发的火花爱心数量
-HEART_BURST_SPEED = 2.0        # 爆发初速度
+SPARK_COUNT        = 19        # 每帧向外爆发扩散的粒子数量
+SPARK_SIZE_MIN     = 5         # 扩散粒子的最小尺寸（像素）
+SPARK_SIZE_MAX     = 20        # 扩散粒子的最大尺寸（像素）
+SPARK_SPEED_MIN    = 1.2       # 扩散向外飞散的最小初速度
+SPARK_SPEED_MAX    = 2.7       # 扩散向外飞散的最大初速度
+SPARK_LIFE         = 55        # 扩散粒子存活寿命/距离
+SPARK_DRAG         = 0.96      # 空气阻力减速比
+SPARK_SPREAD_ANGLE = 0.6       # 发散角度扰动
 
-HEART_SWAY_AMP_X  = 17.0       # 左右晃动幅度
-HEART_SWAY_AMP_Y  = 11.0       # 上下晃动幅度
-HEART_SWAY_SPEED  = 0.020      # 漂浮速度
 
+# ------------------ 【C. 前景文字序列（含 10 字超长句）】 ------------------
+FONT_SIZE_LARGE   = 190        # 基准大字字号
+HEX_COLOR_FOREGROUND = "#c6e2ff" # 优雅冰蓝
 
-# ------------------ 【C. 前景文字独立配置】 ------------------
-FONT_SIZE_LARGE   = 190        # 倒计时、祝福语字号
-FONT_SIZE_CENTER  = 60         # 爱心内部“中秋快乐”字号
+FONT_SIZE_CENTER  = 48         # 爱心双行中心字字号（统一 48px，工整对称）
 
-HEX_COLORS_TEXT = [
-    "#FFFFFF",  # 3
-    "#FFFFFF",  # 2
-    "#FFFFFF",  # 1
-    "#FFFFFF",  # 亲爱的
-    "#FFFFFF",  # 祝你
-    "#FFFFFF",  # 中秋快乐
-    "#FFFFFF",  # 岁岁无忧
+FOREGROUND_TEXTS = [
+    "3", "2", "1",
+    "亲爱的",
+    "见字如面",
+    "今夕何夕",
+    "月满中秋",
+    "祝 你",
+    "中秋快乐",
+    "所念皆所愿",
+    "所行皆坦途",
+    "与你",
+    "皓月同心",
+    "共赴婵娟",
+    "愿我如星君如月",
+    "夜夜流光相皎洁",
+    "月亮是天空的情书",
+    "你是我的已读心动",
+    "中秋月圆",
+    "愿往后年年良辰",
+    "皆与你相伴"
+]
+
+FOREGROUND_DURATIONS = [
+    70, 70, 70,               # 3, 2, 1 倒计时
+    100,                       # 亲爱的
+    105,                       # 见字如面
+    105,                       # 今夕何夕
+    105,                       # 月满中秋
+    105,                       # 祝 你
+    105,                      # 中秋快乐
+    120,                      # 所念皆所愿
+    120,                      # 所行皆坦途
+    100,                       # 与你
+    120,                      # 皓月同心
+    120,                       # 共赴婵娟
+    150,                       # 愿我如星君如月 (7字)
+    150,                       # 夜夜流光相皎洁 (7字)
+    155,                       # 月亮是天空的情书 (8字)
+    155,                       # 你是我的已读心动 (8字)
+    135,                       # 中秋月圆
+    140,                       # 愿往后年年良辰 (7字)
+    150                        # 皆与你相伴
 ]
 
 
-# ------------------ 【D. 结束画面逐字渐显独立配置】 ------------------
-ENDING_TEXT           = "此生风月愿同携\n岁岁晨昏共执蹄"   # 结束寄语（支持 \n 换行）
+# ------------------ 【D. 时长数学锁死：总时长精确 1 分 17 秒】 ------------------
+TARGET_TOTAL_SECONDS  = 77                         # 目标总时长 1分17秒 = 77秒
+TARGET_TOTAL_FRAMES   = TARGET_TOTAL_SECONDS * FPS # 77 * 60 = 4620 帧
+
+ENDING_TEXT           = "今夜月明人尽望\n我的秋思只落你身上"   # 结束寄语
 FONT_SIZE_ENDING      = 54                         # 矢量高清字号
-HEX_COLOR_ENDING_TEXT = "#FFFFFF"                  # 结束字体颜色
-CHAR_APPEAR_INTERVAL  = 10                         # 每一个字出现的间隔帧数（约0.16秒一个字，自然流畅）
-ENDING_DURATION       = 312                        # 结束画面总时长（帧数，约5.2秒）
+HEX_COLOR_ENDING_TEXT = "#c6e2ff"                  # 优雅冰蓝
+CHAR_APPEAR_INTERVAL  = 10                         # 每一个字出现的间隔帧数
+ENDING_DURATION       = 312                        # 结束画面总时长（约5.2秒）
+
+# 动态精准计算爱心时长
+HEART_DURATION = TARGET_TOTAL_FRAMES - sum(FOREGROUND_DURATIONS) - ENDING_DURATION
+
+STATE_DURATIONS = FOREGROUND_DURATIONS + [HEART_DURATION, ENDING_DURATION]
 
 
-# ------------------ 【各状态停留时长（帧数）】 ------------------
-STATE_DURATIONS = [65, 65, 65, 90, 90, 110, 110, 3720, ENDING_DURATION]
+# ------------------ 【E. 右下角若隐若现水印签名独立配置】 ------------------
+WATERMARK_TEXT          = "-To my kxx"          # 水印内容
+FONT_SIZE_WATERMARK     = FONT_SIZE_MATRIX     # 默认与背景字体大小相同（25px）
+WATERMARK_MAX_ALPHA     = 5                   # 最高显现亮度
+WATERMARK_MIN_ALPHA     = 2                    # 最低隐去亮度
+WATERMARK_BREATHE_SPEED = 0.020                # 呼吸明暗起伏速度
 
 
 # ==============================================================================
@@ -96,7 +159,7 @@ RAIN_COLORS       = [hex_to_rgb(c) for c in HEX_COLORS_RAIN]
 SPARK_COLORS      = [hex_to_rgb(c) for c in HEX_COLORS_SPARKS]
 COLOR_HEART       = hex_to_rgb(HEX_COLOR_HEART)
 COLOR_CENTER_TEXT = hex_to_rgb(HEX_COLOR_CENTER_TEXT)
-COLORS_TEXT       = [hex_to_rgb(c) for c in HEX_COLORS_TEXT]
+COLOR_FOREGROUND  = hex_to_rgb(HEX_COLOR_FOREGROUND)
 COLOR_ENDING_TEXT = hex_to_rgb(HEX_COLOR_ENDING_TEXT)
 
 pygame.init()
@@ -121,10 +184,11 @@ if not os.path.exists(FONT_PATH):
     print(f"【错误提示】未在当前目录找到字体文件：{FONT_PATH}")
     sys.exit()
 
-font_matrix = pygame.font.Font(FONT_PATH, FONT_SIZE_MATRIX)
-font_large  = pygame.font.Font(FONT_PATH, FONT_SIZE_LARGE)
-font_center = pygame.font.Font(FONT_PATH, FONT_SIZE_CENTER)
-font_ending = pygame.font.Font(FONT_PATH, FONT_SIZE_ENDING)
+font_matrix    = pygame.font.Font(FONT_PATH, FONT_SIZE_MATRIX)
+font_large     = pygame.font.Font(FONT_PATH, FONT_SIZE_LARGE)
+font_center    = pygame.font.Font(FONT_PATH, FONT_SIZE_CENTER)
+font_ending    = pygame.font.Font(FONT_PATH, FONT_SIZE_ENDING)
+font_watermark = pygame.font.Font(FONT_PATH, FONT_SIZE_WATERMARK)
 
 def create_heart_texture(size, color):
     surf = pygame.Surface((size, size), pygame.SRCALPHA)
@@ -135,19 +199,21 @@ def create_heart_texture(size, color):
     pygame.draw.polygon(surf, color, points)
     return surf
 
+# 贴图缓存：中心文字使用独立的纤细小爱心贴图（4px），彻底告别粗笨重叠！
 heart_texture_cache = {
     'heart': create_heart_texture(MINI_HEART_SIZE, COLOR_HEART),
-    'text': create_heart_texture(MINI_HEART_SIZE - 2, COLOR_CENTER_TEXT)
+    'text': create_heart_texture(CENTER_PARTICLE_SIZE, COLOR_CENTER_TEXT)
 }
 
 
 # ================= 背景代码雨 =================
 class MatrixRain:
     def __init__(self):
-        self.cols = WIDTH // MATRIX_COL_SPACING
+        self.cols = int(WIDTH / MATRIX_COL_SPACING)
         self.drops = [random.randint(-40, 0) for _ in range(self.cols)]
         self.speeds = [random.uniform(MATRIX_SPEED_MIN, MATRIX_SPEED_MAX) for _ in range(self.cols)]
         self.col_colors = [random.choice(RAIN_COLORS) for _ in range(self.cols)]
+        self.col_chars = [random.choice(MATRIX_CHARS) for _ in range(self.cols)]
         self.trail_surface = pygame.Surface((WIDTH, HEIGHT))
         self.trail_surface.fill((0, 0, 0))
 
@@ -156,19 +222,23 @@ class MatrixRain:
         surface.blit(self.trail_surface, (0, 0))
 
         for i in range(self.cols):
-            char = random.choice(MATRIX_CHARS)
+            if random.random() < MATRIX_CHAR_MUTATE_RATE:
+                self.col_chars[i] = random.choice(MATRIX_CHARS)
+            char = self.col_chars[i]
+
             base_col = self.col_colors[i]
             shade = random.randint(0, 50)
             color = (max(0, base_col[0] - shade), max(0, base_col[1] - shade), max(0, base_col[2] - shade))
             txt = font_matrix.render(char, True, color)
             
-            x = i * MATRIX_COL_SPACING
+            x = int(i * MATRIX_COL_SPACING)
             y = self.drops[i] * FONT_SIZE_MATRIX
             surface.blit(txt, (x, y))
 
             if y > HEIGHT and random.random() > 0.96:
                 self.drops[i] = 0
                 self.col_colors[i] = random.choice(RAIN_COLORS)
+                self.col_chars[i] = random.choice(MATRIX_CHARS)
                 
             self.drops[i] += self.speeds[i] * 0.18
 
@@ -178,20 +248,20 @@ class BurstHeartSpark:
     def __init__(self, x, y, angle):
         self.x = x
         self.y = y
-        spd = random.uniform(1.2, HEART_BURST_SPEED)
-        self.vx = math.cos(angle) * spd + random.uniform(-0.4, 0.4)
-        self.vy = math.sin(angle) * spd + random.uniform(-0.4, 0.4)
-        self.life = 40
-        self.max_life = 40
+        spd = random.uniform(SPARK_SPEED_MIN, SPARK_SPEED_MAX)
+        self.vx = math.cos(angle) * spd + random.uniform(-SPARK_SPREAD_ANGLE, SPARK_SPREAD_ANGLE)
+        self.vy = math.sin(angle) * spd + random.uniform(-SPARK_SPREAD_ANGLE, SPARK_SPREAD_ANGLE)
+        self.life = SPARK_LIFE
+        self.max_life = SPARK_LIFE
         self.color = random.choice(SPARK_COLORS)
-        self.size = random.randint(5, 9)
+        self.size = random.randint(SPARK_SIZE_MIN, SPARK_SIZE_MAX)
         self.texture = create_heart_texture(self.size, self.color)
 
     def update(self):
         self.x += self.vx
         self.y += self.vy
-        self.vx *= 0.96
-        self.vy *= 0.96
+        self.vx *= SPARK_DRAG
+        self.vy *= SPARK_DRAG
         self.life -= 1
 
     def draw(self, surface):
@@ -212,6 +282,24 @@ def sample_text_to_particles(text, font, step=5):
                 points.append((WIDTH // 2 - w // 2 + x, HEIGHT // 2 - h // 2 + y))
     return points
 
+def sample_dynamic_foreground_text(text):
+    clean_len = len(text.replace(" ", ""))
+    if clean_len >= 10:
+        target_size = int(FONT_SIZE_LARGE * 0.44)
+    elif clean_len >= 8:
+        target_size = int(FONT_SIZE_LARGE * 0.52)
+    elif clean_len >= 7:
+        target_size = int(FONT_SIZE_LARGE * 0.60)
+    elif clean_len >= 5:
+        target_size = int(FONT_SIZE_LARGE * 0.72)
+    elif clean_len == 4:
+        target_size = int(FONT_SIZE_LARGE * 0.85)
+    else:
+        target_size = FONT_SIZE_LARGE             
+    
+    dyn_font = pygame.font.Font(FONT_PATH, target_size)
+    return sample_text_to_particles(text, dyn_font, step=4)
+
 def get_heart_curve_point(t, scale):
     x = 16 * (math.sin(t) ** 3)
     y = -(13 * math.cos(t) - 5 * math.cos(2 * t) - 2 * math.cos(3 * t) - math.cos(4 * t))
@@ -223,14 +311,13 @@ class SuperParticleSystem:
     def __init__(self):
         self.particles = []
         self.sparks = []
-        self.color = COLORS_TEXT[0]
+        self.color = COLOR_FOREGROUND
         self.is_heart_mode = False
         self.is_ending_mode = False
         self.heart_border_points = []
         self.heart_pulse = 0.0
         self.sway_timer = 0.0
         
-        # 结束画面专属控制变量
         self.ending_timer = 0
         self.ending_char_data = []
 
@@ -268,10 +355,21 @@ class SuperParticleSystem:
 
     def set_target(self, state_idx):
         targets = []
-        self.is_heart_mode = (state_idx == 7)
-        self.is_ending_mode = (state_idx == 8)
+        num_texts = len(FOREGROUND_TEXTS)
 
-        if self.is_heart_mode:
+        # 1. 前置文字序列播放
+        if state_idx < num_texts:
+            self.is_heart_mode = False
+            self.is_ending_mode = False
+            current_text = FOREGROUND_TEXTS[state_idx]
+            raw_pts = sample_dynamic_foreground_text(current_text)
+            for pt in raw_pts:
+                targets.append((pt[0], pt[1], 'normal'))
+
+        # 2. 大爱心内部双行统一字号（应用独立微雕级粒子步长）
+        elif state_idx == num_texts:
+            self.is_heart_mode = True
+            self.is_ending_mode = False
             self.heart_border_points = []
             num_heart_particles = 1300
             for _ in range(num_heart_particles):
@@ -284,18 +382,22 @@ class SuperParticleSystem:
                 if abs(scale_offset) < 0.8:
                     self.heart_border_points.append((px, py, t))
 
-            center_pts = sample_text_to_particles("中秋快乐", font_center, step=4)
-            for pt in center_pts:
-                targets.append((pt[0], pt[1] + 0, 'text'))
+            # 中心文字使用独立的 CENTER_TEXT_STEP 细腻采样
+            pts_top = sample_text_to_particles("中秋快乐", font_center, step=CENTER_TEXT_STEP)
+            for pt in pts_top:
+                targets.append((pt[0], pt[1] - 28, 'text'))
 
-        elif self.is_ending_mode:
-            # 1. 音乐 2.5 秒平滑渐隐淡出（修改为2500毫秒）
+            pts_sub = sample_text_to_particles("不止中秋", font_center, step=CENTER_TEXT_STEP)
+            for pt in pts_sub:
+                targets.append((pt[0], pt[1] + 28, 'text'))
+
+        # 3. 结束画面落幕
+        else:
+            self.is_heart_mode = False
+            self.is_ending_mode = True
             pygame.mixer.music.fadeout(2500)
-            
-            # 2. 初始化逐字排版数据
             self.prepare_ending_text()
             
-            # 3. 爱心粒子化为星光消散
             cx, cy = WIDTH // 2, HEIGHT // 2 - 25
             for p in self.particles:
                 angle = math.atan2(p['y'] - cy, p['x'] - cx) + random.uniform(-0.4, 0.4)
@@ -308,13 +410,6 @@ class SuperParticleSystem:
                 p['size'] = random.choice([1, 2, 2, 3])
                 p['color'] = random.choice(SPARK_COLORS)
             return
-
-        else:
-            self.color = COLORS_TEXT[min(state_idx, len(COLORS_TEXT)-1)]
-            seq = ["3", "2", "1", "亲爱的", "祝 你", "中秋快乐", "岁岁无忧"]
-            raw_pts = sample_text_to_particles(seq[state_idx], font_large, step=6)
-            for pt in raw_pts:
-                targets.append((pt[0], pt[1], 'normal'))
 
         random.shuffle(targets)
 
@@ -340,7 +435,6 @@ class SuperParticleSystem:
             sway_offset_y = 0
             pulse_offset = 0
 
-        # 1. 粒子运动与绘制
         if self.is_ending_mode:
             for p in self.particles:
                 if p['alpha'] > 0:
@@ -367,13 +461,13 @@ class SuperParticleSystem:
                 if p['type'] == 'heart':
                     surface.blit(heart_texture_cache['heart'], (int(final_x - MINI_HEART_SIZE // 2), int(final_y - MINI_HEART_SIZE // 2)))
                 elif p['type'] == 'text':
-                    surface.blit(heart_texture_cache['text'], (int(final_x - 4), int(final_y - 4)))
+                    # 【核心优化】：按独立的 4px 精细尺寸居中贴图，笔画彻底分明！
+                    surface.blit(heart_texture_cache['text'], (int(final_x - CENTER_PARTICLE_SIZE // 2), int(final_y - CENTER_PARTICLE_SIZE // 2)))
                 else:
                     pygame.draw.circle(surface, self.color, (int(final_x), int(final_y)), 3)
 
-        # 2. 爱心爆发火花
         if self.is_heart_mode and self.heart_border_points:
-            for _ in range(HEART_BURST_COUNT):
+            for _ in range(SPARK_COUNT):
                 bx, by, _ = random.choice(self.heart_border_points)
                 real_bx = bx + sway_offset_x
                 real_by = by + sway_offset_y
@@ -388,7 +482,6 @@ class SuperParticleSystem:
             if s.life <= 0:
                 self.sparks.remove(s)
 
-        # 3. 逐字渐显结束语
         if self.is_ending_mode:
             self.ending_timer += 1
             for item in self.ending_char_data:
@@ -405,6 +498,22 @@ class SuperParticleSystem:
                     surface.blit(container, (item['x'], item['y'] - offset_y))
 
 
+# ================= 水印绘制辅助函数 =================
+def draw_watermark(surface, alpha):
+    if alpha <= 0:
+        return
+    text_surf = font_watermark.render(WATERMARK_TEXT, True, (200, 225, 255))
+    temp_surf = pygame.Surface(text_surf.get_size(), pygame.SRCALPHA)
+    temp_surf.blit(text_surf, (0, 0))
+    
+    alpha_mask = pygame.Surface(text_surf.get_size(), pygame.SRCALPHA)
+    alpha_mask.fill((255, 255, 255, alpha))
+    temp_surf.blit(alpha_mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+    
+    pos = (WIDTH - text_surf.get_width() - 25, HEIGHT - text_surf.get_height() - 20)
+    surface.blit(temp_surf, pos)
+
+
 # ================= 主循环 =================
 matrix = MatrixRain()
 system = SuperParticleSystem()
@@ -418,6 +527,8 @@ black_fade = pygame.Surface((WIDTH, HEIGHT))
 black_fade.fill((0, 0, 0))
 fade_alpha = 0
 is_fading_in = True
+
+watermark_time = 0.0
 
 while running:
     for event in pygame.event.get():
@@ -447,6 +558,11 @@ while running:
 
     matrix.update_and_draw(screen)
     system.update_and_draw(screen)
+
+    watermark_time += WATERMARK_BREATHE_SPEED
+    norm_sin = (math.sin(watermark_time) + 1.0) / 2.0
+    cur_wm_alpha = int(WATERMARK_MIN_ALPHA + norm_sin * (WATERMARK_MAX_ALPHA - WATERMARK_MIN_ALPHA))
+    draw_watermark(screen, cur_wm_alpha)
 
     if fade_alpha > 0:
         black_fade.set_alpha(min(255, max(0, fade_alpha)))
