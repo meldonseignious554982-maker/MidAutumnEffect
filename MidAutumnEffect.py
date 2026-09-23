@@ -41,12 +41,12 @@ HEX_COLORS_RAIN = [
 HEX_COLOR_HEART       = "#f688a7"   # 爱心本体颜色
 HEX_COLOR_CENTER_TEXT = "#FFF066"   # 爱心中心字颜色（暖金黄）
 
-MINI_HEART_SIZE       = 12         # 大爱心本体的粒子大小（保持你的饱满大颗粒）
+MINI_HEART_SIZE       = 12         # 大爱心本体的粒子大小
 HEART_SCALE           = 16         # 爱心大小
 HEART_THICKNESS       = 3          # 爱心厚度
 
-# 【核心优化】：爱心中间汉字独立粒子参数（彻底解决臃肿黏连糊在一起！）
-CENTER_PARTICLE_SIZE  = 5          # 中文字粒子大小（默认4，笔画纤细分明绝不糊，可调 3~5）
+# 爱心中间汉字独立粒子参数
+CENTER_PARTICLE_SIZE  = 5          # 中文字粒子大小
 CENTER_TEXT_STEP      = 3          # 文字采样间距
 
 HEART_SWAY_AMP_X      = 17.0       # 左右晃动幅度
@@ -133,16 +133,27 @@ HEX_COLOR_ENDING_TEXT = "#c6e2ff"                  # 优雅冰蓝
 CHAR_APPEAR_INTERVAL  = 10                         # 每一个字出现的间隔帧数
 ENDING_DURATION       = 312                        # 结束画面总时长（约5.2秒）
 
-# 动态精准计算爱心时长
+# 动态精准计算爱心时长：4620 - 2450 - 312 = 1858 帧（约 31 秒），总时长严丝合缝 1分17秒！
 HEART_DURATION = TARGET_TOTAL_FRAMES - sum(FOREGROUND_DURATIONS) - ENDING_DURATION
 
 STATE_DURATIONS = FOREGROUND_DURATIONS + [HEART_DURATION, ENDING_DURATION]
 
 
-# ------------------ 【E. 右下角若隐若现水印签名独立配置】 ------------------
-WATERMARK_TEXT          = "-To my kxx"          # 水印内容
-FONT_SIZE_WATERMARK     = FONT_SIZE_MATRIX     # 默认与背景字体大小相同（25px）
-WATERMARK_MAX_ALPHA     = 5                   # 最高显现亮度
+# ------------------ 【E. 右下角专属双行微光水印签名独立配置（全开放）】 ------------------
+WATERMARK_LINE1         = "-To my love"        # 上行内容
+WATERMARK_LINE2         = '"kxx"'              # 下行内容
+
+# 【核心新增】：字号大小自定义
+WATERMARK_FONT_SIZE_L1  = 20                   # 上行字号（默认25，可随意调大调小）
+WATERMARK_FONT_SIZE_L2  = 17                   # 下行字号（默认22，稍微精巧一点，也可以改成25与上行完全一样）
+WATERMARK_LINE_SPACING  = 4                    # 上下两行的垂直间隙（像素）
+
+# 【核心新增】：位置移动自定义
+WATERMARK_OFFSET_RIGHT  = 22                   # 距离右边缘距离（增大向【左】移动，缩小向【右】靠）
+WATERMARK_OFFSET_BOTTOM = 17                   # 距离底边缘距离（增大向【上】移动，缩小向【下】靠）
+
+# 呼吸亮度与起伏速度
+WATERMARK_MAX_ALPHA     = 5                    # 最高显现亮度
 WATERMARK_MIN_ALPHA     = 2                    # 最低隐去亮度
 WATERMARK_BREATHE_SPEED = 0.020                # 呼吸明暗起伏速度
 
@@ -184,11 +195,14 @@ if not os.path.exists(FONT_PATH):
     print(f"【错误提示】未在当前目录找到字体文件：{FONT_PATH}")
     sys.exit()
 
-font_matrix    = pygame.font.Font(FONT_PATH, FONT_SIZE_MATRIX)
-font_large     = pygame.font.Font(FONT_PATH, FONT_SIZE_LARGE)
-font_center    = pygame.font.Font(FONT_PATH, FONT_SIZE_CENTER)
-font_ending    = pygame.font.Font(FONT_PATH, FONT_SIZE_ENDING)
-font_watermark = pygame.font.Font(FONT_PATH, FONT_SIZE_WATERMARK)
+font_matrix       = pygame.font.Font(FONT_PATH, FONT_SIZE_MATRIX)
+font_large        = pygame.font.Font(FONT_PATH, FONT_SIZE_LARGE)
+font_center       = pygame.font.Font(FONT_PATH, FONT_SIZE_CENTER)
+font_ending       = pygame.font.Font(FONT_PATH, FONT_SIZE_ENDING)
+
+# 水印上下行独立字号载入
+font_watermark_l1 = pygame.font.Font(FONT_PATH, WATERMARK_FONT_SIZE_L1)
+font_watermark_l2 = pygame.font.Font(FONT_PATH, WATERMARK_FONT_SIZE_L2)
 
 def create_heart_texture(size, color):
     surf = pygame.Surface((size, size), pygame.SRCALPHA)
@@ -199,7 +213,6 @@ def create_heart_texture(size, color):
     pygame.draw.polygon(surf, color, points)
     return surf
 
-# 贴图缓存：中心文字使用独立的纤细小爱心贴图（4px），彻底告别粗笨重叠！
 heart_texture_cache = {
     'heart': create_heart_texture(MINI_HEART_SIZE, COLOR_HEART),
     'text': create_heart_texture(CENTER_PARTICLE_SIZE, COLOR_CENTER_TEXT)
@@ -366,7 +379,7 @@ class SuperParticleSystem:
             for pt in raw_pts:
                 targets.append((pt[0], pt[1], 'normal'))
 
-        # 2. 大爱心内部双行统一字号（应用独立微雕级粒子步长）
+        # 2. 大爱心内部双行统一字号
         elif state_idx == num_texts:
             self.is_heart_mode = True
             self.is_ending_mode = False
@@ -382,7 +395,6 @@ class SuperParticleSystem:
                 if abs(scale_offset) < 0.8:
                     self.heart_border_points.append((px, py, t))
 
-            # 中心文字使用独立的 CENTER_TEXT_STEP 细腻采样
             pts_top = sample_text_to_particles("中秋快乐", font_center, step=CENTER_TEXT_STEP)
             for pt in pts_top:
                 targets.append((pt[0], pt[1] - 28, 'text'))
@@ -461,7 +473,6 @@ class SuperParticleSystem:
                 if p['type'] == 'heart':
                     surface.blit(heart_texture_cache['heart'], (int(final_x - MINI_HEART_SIZE // 2), int(final_y - MINI_HEART_SIZE // 2)))
                 elif p['type'] == 'text':
-                    # 【核心优化】：按独立的 4px 精细尺寸居中贴图，笔画彻底分明！
                     surface.blit(heart_texture_cache['text'], (int(final_x - CENTER_PARTICLE_SIZE // 2), int(final_y - CENTER_PARTICLE_SIZE // 2)))
                 else:
                     pygame.draw.circle(surface, self.color, (int(final_x), int(final_y)), 3)
@@ -498,19 +509,36 @@ class SuperParticleSystem:
                     surface.blit(container, (item['x'], item['y'] - offset_y))
 
 
-# ================= 水印绘制辅助函数 =================
+# ================= 水印绘制辅助函数（支持独立字号与坐标自由位移） =================
 def draw_watermark(surface, alpha):
+    """右下角专属签名：支持独立字号与灵活坐标位移"""
     if alpha <= 0:
         return
-    text_surf = font_watermark.render(WATERMARK_TEXT, True, (200, 225, 255))
-    temp_surf = pygame.Surface(text_surf.get_size(), pygame.SRCALPHA)
-    temp_surf.blit(text_surf, (0, 0))
+        
+    surf1 = font_watermark_l1.render(WATERMARK_LINE1, True, (200, 225, 255))
+    surf2 = font_watermark_l2.render(WATERMARK_LINE2, True, (200, 225, 255))
     
-    alpha_mask = pygame.Surface(text_surf.get_size(), pygame.SRCALPHA)
+    max_w = max(surf1.get_width(), surf2.get_width())
+    total_h = surf1.get_height() + surf2.get_height() + WATERMARK_LINE_SPACING
+    
+    temp_surf = pygame.Surface((max_w, total_h), pygame.SRCALPHA)
+    
+    # 第一行：“-To my love” 在水印区域居中
+    x1 = (max_w - surf1.get_width()) // 2
+    temp_surf.blit(surf1, (x1, 0))
+    
+    # 第二行：“"kxx"” 在第一行正下方对称居中
+    x2 = (max_w - surf2.get_width()) // 2
+    y2 = surf1.get_height() + WATERMARK_LINE_SPACING
+    temp_surf.blit(surf2, (x2, y2))
+    
+    # 叠加呼吸透明度遮罩
+    alpha_mask = pygame.Surface((max_w, total_h), pygame.SRCALPHA)
     alpha_mask.fill((255, 255, 255, alpha))
     temp_surf.blit(alpha_mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
     
-    pos = (WIDTH - text_surf.get_width() - 25, HEIGHT - text_surf.get_height() - 20)
+    # 【核心】：应用自定义边距偏移坐标（RIGHT 与 BOTTOM 自由控制）
+    pos = (WIDTH - max_w - WATERMARK_OFFSET_RIGHT, HEIGHT - total_h - WATERMARK_OFFSET_BOTTOM)
     surface.blit(temp_surf, pos)
 
 
@@ -559,6 +587,7 @@ while running:
     matrix.update_and_draw(screen)
     system.update_and_draw(screen)
 
+    # 水印呼吸振荡
     watermark_time += WATERMARK_BREATHE_SPEED
     norm_sin = (math.sin(watermark_time) + 1.0) / 2.0
     cur_wm_alpha = int(WATERMARK_MIN_ALPHA + norm_sin * (WATERMARK_MAX_ALPHA - WATERMARK_MIN_ALPHA))
