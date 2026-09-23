@@ -68,6 +68,7 @@
             50% { transform: scale(1.15); opacity: 1; }
         }
 
+        /* 仿 X 现代悬浮控制栏 */
         #player-ui {
             position: fixed;
             bottom: 0;
@@ -225,43 +226,97 @@
     </div>
 
     <script>
+        // ================= 参数配置（与 Python 100% 精确同步） =================
         const WIDTH = 1000;
         const HEIGHT = 720;
         const FPS = 60;
 
-        const FONT_SIZE_MATRIX = 20;
-        const MATRIX_COL_SPACING = 3;
-        const MATRIX_SPEED_MIN = 0.3;
+        const FONT_SIZE_MATRIX = 25;
+        const MATRIX_COL_SPACING = 2.8;
+        const MATRIX_SPEED_MIN = 0.2;
         const MATRIX_SPEED_MAX = 1.0;
-        const FADE_TRAIL_ALPHA = 25 / 255;
-        const MATRIX_CHARS = "中秋快乐皆如所愿阖家团圆岁岁平安月圆人圆";
+        const FADE_TRAIL_ALPHA = 22 / 255;
+        const MATRIX_CHARS = "但愿人长久，千里共婵娟。若可，我愿与你共婵娟，也共人间烟火";
+        const MATRIX_CHAR_MUTATE_RATE = 0.08;
 
         const HEX_COLORS_RAIN = ["#6e9dad", "#b36879", "#ad9a50", "#afaaaa"];
         const HEX_COLOR_HEART = "#f688a7";
         const HEX_COLOR_CENTER_TEXT = "#FFF066";
-        const HEX_COLORS_SPARKS = ["#6e9dad", "#FF85A1", "#FFE066", "#FFFFFF"];
+        const HEX_COLOR_FOREGROUND = "#c6e2ff";
+        const HEX_COLOR_ENDING_TEXT = "#c6e2ff";
 
-        const MINI_HEART_SIZE = 7;
-        const HEART_SCALE = 15;
+        const HEX_COLORS_SPARKS = ["#c6e2ff", "#FF85A1", "#FFE066", "#FFFFFF"];
+
+        const MINI_HEART_SIZE = 12;
+        const CENTER_PARTICLE_SIZE = 5;
+        const HEART_SCALE = 16;
         const HEART_THICKNESS = 3;
-        const HEART_BURST_COUNT = 15;
-        const HEART_BURST_SPEED = 2.0;
+
+        const SPARK_COUNT = 19;
+        const SPARK_SIZE_MIN = 5;
+        const SPARK_SIZE_MAX = 20;
+        const SPARK_SPEED_MIN = 1.2;
+        const SPARK_SPEED_MAX = 2.7;
+        const SPARK_LIFE = 55;
+        const SPARK_DRAG = 0.96;
+        const SPARK_SPREAD_ANGLE = 0.6;
 
         const HEART_SWAY_AMP_X = 17.0;
         const HEART_SWAY_AMP_Y = 11.0;
         const HEART_SWAY_SPEED = 0.020;
 
         const FONT_SIZE_LARGE = 190;
-        const FONT_SIZE_CENTER = 60;
+        const FONT_SIZE_CENTER = 48; // 爱心中文字号
 
-        const ENDING_TEXT = "此生风月愿同携\n岁岁晨昏共执蹄";
+        // 你的 21 段前置诗篇序列
+        const FOREGROUND_TEXTS = [
+            "3", "2", "1",
+            "亲爱的",
+            "见字如面",
+            "今夕何夕",
+            "月满中秋",
+            "祝 你",
+            "中秋快乐",
+            "所念皆所愿",
+            "所行皆坦途",
+            "与你",
+            "皓月同心",
+            "共赴婵娟",
+            "愿我如星君如月",
+            "夜夜流光相皎洁",
+            "月亮是天空的情书",
+            "你是我的已读心动",
+            "中秋月圆",
+            "愿往后年年良辰",
+            "皆与你相伴"
+        ];
+
+        const FOREGROUND_DURATIONS = [
+            70, 70, 70,
+            100, 105, 105, 105, 105, 105,
+            120, 120, 100, 120, 120,
+            150, 150, 155, 155, 135, 140, 150
+        ];
+
+        const TARGET_TOTAL_SECONDS = 77; // 1分17秒
+        const TARGET_TOTAL_FRAMES = TARGET_TOTAL_SECONDS * FPS; // 4620 帧
+
+        const ENDING_TEXT = "今夜月明人尽望\n我的秋思只落你身上";
         const FONT_SIZE_ENDING = 54;
-        const HEX_COLOR_ENDING_TEXT = "#FFFFFF";
         const CHAR_APPEAR_INTERVAL = 10;
         const ENDING_DURATION = 312;
 
-        const STATE_DURATIONS = [65, 65, 65, 90, 90, 110, 110, 3720, ENDING_DURATION];
-        const TOTAL_FRAMES = STATE_DURATIONS.reduce((a, b) => a + b, 0);
+        const HEART_DURATION = TARGET_TOTAL_FRAMES - FOREGROUND_DURATIONS.reduce((a, b) => a + b, 0) - ENDING_DURATION;
+        const STATE_DURATIONS = [...FOREGROUND_DURATIONS, HEART_DURATION, ENDING_DURATION];
+        const TOTAL_FRAMES = TARGET_TOTAL_FRAMES;
+
+        // 水印配置
+        const WATERMARK_LINE1 = "-To my love";
+        const WATERMARK_LINE2 = '"kxx"';
+        const WATERMARK_FONT_SIZE_L1 = 25;
+        const WATERMARK_FONT_SIZE_L2 = 22;
+        const WATERMARK_OFFSET_RIGHT = 25;
+        const WATERMARK_OFFSET_BOTTOM = 20;
 
         // ================= 2K Retina 超清画布 =================
         const canvas = document.getElementById('canvas');
@@ -289,7 +344,7 @@
             return hCanvas;
         }
         const heartTexture = createHeartCanvas(MINI_HEART_SIZE, HEX_COLOR_HEART);
-        const centerTextTexture = createHeartCanvas(MINI_HEART_SIZE - 2, HEX_COLOR_CENTER_TEXT);
+        const centerTextTexture = createHeartCanvas(CENTER_PARTICLE_SIZE, HEX_COLOR_CENTER_TEXT);
 
         // ================= 代码雨 =================
         class MatrixRain {
@@ -298,15 +353,18 @@
                 this.drops = Array.from({ length: this.cols }, () => -Math.random() * 40);
                 this.speeds = Array.from({ length: this.cols }, () => MATRIX_SPEED_MIN + Math.random() * (MATRIX_SPEED_MAX - MATRIX_SPEED_MIN));
                 this.colColors = Array.from({ length: this.cols }, () => HEX_COLORS_RAIN[Math.floor(Math.random() * HEX_COLORS_RAIN.length)]);
+                this.colChars = Array.from({ length: this.cols }, () => MATRIX_CHARS[Math.floor(Math.random() * MATRIX_CHARS.length)]);
             }
             draw() {
                 ctx.fillStyle = `rgba(0, 0, 0, ${FADE_TRAIL_ALPHA})`;
                 ctx.fillRect(0, 0, WIDTH, HEIGHT);
                 ctx.font = `${FONT_SIZE_MATRIX}px 'CustomFont', sans-serif`;
                 for (let i = 0; i < this.cols; i++) {
-                    const char = MATRIX_CHARS[Math.floor(Math.random() * MATRIX_CHARS.length)];
+                    if (Math.random() < MATRIX_CHAR_MUTATE_RATE) {
+                        this.colChars[i] = MATRIX_CHARS[Math.floor(Math.random() * MATRIX_CHARS.length)];
+                    }
                     ctx.fillStyle = this.colColors[i];
-                    ctx.fillText(char, i * MATRIX_COL_SPACING, this.drops[i] * FONT_SIZE_MATRIX);
+                    ctx.fillText(this.colChars[i], i * MATRIX_COL_SPACING, this.drops[i] * FONT_SIZE_MATRIX);
                     if (this.drops[i] * FONT_SIZE_MATRIX > HEIGHT && Math.random() > 0.96) {
                         this.drops[i] = 0;
                         this.colColors[i] = HEX_COLORS_RAIN[Math.floor(Math.random() * HEX_COLORS_RAIN.length)];
@@ -316,7 +374,7 @@
             }
         }
 
-        // ================= 粒子采样 =================
+        // ================= 粒子采样辅助 =================
         function sampleText(text, fontSize, step) {
             const offCanvas = document.createElement('canvas');
             const offCtx = offCanvas.getContext('2d');
@@ -339,6 +397,18 @@
                 }
             }
             return points;
+        }
+
+        function sampleDynamicForegroundText(text) {
+            const cleanLen = text.replace(/\s+/g, "").length;
+            let targetSize = FONT_SIZE_LARGE;
+            if (cleanLen >= 10) targetSize = Math.floor(FONT_SIZE_LARGE * 0.44);
+            else if (cleanLen >= 8) targetSize = Math.floor(FONT_SIZE_LARGE * 0.52);
+            else if (cleanLen >= 7) targetSize = Math.floor(FONT_SIZE_LARGE * 0.60);
+            else if (cleanLen >= 5) targetSize = Math.floor(FONT_SIZE_LARGE * 0.72);
+            else if (cleanLen === 4) targetSize = Math.floor(FONT_SIZE_LARGE * 0.85);
+
+            return sampleText(text, targetSize, 4);
         }
 
         function getHeartPoint(t, scale) {
@@ -394,11 +464,15 @@
             }
 
             setTarget(stateIdx) {
-                this.isHeartMode = (stateIdx === 7);
-                this.isEndingMode = (stateIdx === 8);
+                const numTexts = FOREGROUND_TEXTS.length;
+                this.isHeartMode = (stateIdx === numTexts);
+                this.isEndingMode = (stateIdx === numTexts + 1);
                 const targets = [];
 
-                if (this.isHeartMode) {
+                if (stateIdx < numTexts) {
+                    const pts = sampleDynamicForegroundText(FOREGROUND_TEXTS[stateIdx]);
+                    pts.forEach(pt => targets.push({ x: pt.x, y: pt.y, type: 'normal' }));
+                } else if (this.isHeartMode) {
                     this.heartBorderPoints = [];
                     for (let i = 0; i < 1300; i++) {
                         const t = Math.random() * Math.PI * 2;
@@ -408,8 +482,11 @@
                         targets.push({ x: pt.x, y: pt.y, type: 'heart' });
                         if (Math.abs(scaleOffset) < 0.8) this.heartBorderPoints.push(pt);
                     }
-                    const centerPts = sampleText("中秋快乐", FONT_SIZE_CENTER, 3);
-                    centerPts.forEach(pt => targets.push({ x: pt.x, y: pt.y, type: 'text' }));
+                    // 双行 48px 对称居中
+                    const ptsTop = sampleText("中秋快乐", FONT_SIZE_CENTER, 3);
+                    ptsTop.forEach(pt => targets.push({ x: pt.x, y: pt.y - 28, type: 'text' }));
+                    const ptsSub = sampleText("不止中秋", FONT_SIZE_CENTER, 3);
+                    ptsSub.forEach(pt => targets.push({ x: pt.x, y: pt.y + 28, type: 'text' }));
                 } else if (this.isEndingMode) {
                     this.prepareEndingText();
                     this.particles.forEach(p => {
@@ -421,18 +498,12 @@
                         p.color = HEX_COLORS_SPARKS[Math.floor(Math.random() * HEX_COLORS_SPARKS.length)];
                     });
                     return;
-                } else {
-                    const seq = ["3", "2", "1", "亲爱的", "祝 你", "中秋快乐", "岁岁无忧"];
-                    const pts = sampleText(seq[stateIdx], FONT_SIZE_LARGE, 4);
-                    pts.forEach(pt => targets.push({ x: pt.x, y: pt.y, type: 'normal' }));
                 }
 
                 while (this.particles.length < targets.length) {
                     this.particles.push({ x: Math.random() * WIDTH, y: Math.random() * HEIGHT, type: 'normal' });
                 }
-                if (this.particles.length > targets.length) {
-                    this.particles = this.particles.slice(0, targets.length);
-                }
+                if (this.particles.length > targets.length) this.particles = this.particles.slice(0, targets.length);
 
                 targets.sort(() => Math.random() - 0.5);
                 targets.forEach((pt, i) => {
@@ -473,24 +544,25 @@
                         if (p.type === 'heart') {
                             ctx.drawImage(heartTexture, fx - MINI_HEART_SIZE / 2, fy - MINI_HEART_SIZE / 2, MINI_HEART_SIZE, MINI_HEART_SIZE);
                         } else if (p.type === 'text') {
-                            ctx.drawImage(centerTextTexture, fx - (MINI_HEART_SIZE - 2) / 2, fy - (MINI_HEART_SIZE - 2) / 2, MINI_HEART_SIZE - 2, MINI_HEART_SIZE - 2);
+                            ctx.drawImage(centerTextTexture, fx - CENTER_PARTICLE_SIZE / 2, fy - CENTER_PARTICLE_SIZE / 2, CENTER_PARTICLE_SIZE, CENTER_PARTICLE_SIZE);
                         } else {
-                            ctx.fillStyle = '#FFFFFF';
+                            ctx.fillStyle = HEX_COLOR_FOREGROUND;
                             ctx.beginPath(); ctx.arc(fx, fy, 2.2, 0, Math.PI * 2); ctx.fill();
                         }
                     });
                 }
 
                 if (this.isHeartMode && this.heartBorderPoints.length > 0) {
-                    for (let i = 0; i < HEART_BURST_COUNT; i++) {
+                    for (let i = 0; i < SPARK_COUNT; i++) {
                         const bp = this.heartBorderPoints[Math.floor(Math.random() * this.heartBorderPoints.length)];
                         const angle = Math.atan2(bp.y - (HEIGHT / 2 - 25), bp.x - WIDTH / 2);
-                        const spd = 1.2 + Math.random() * HEART_BURST_SPEED;
+                        const spd = randomUniform(SPARK_SPEED_MIN, SPARK_SPEED_MAX);
                         this.sparks.push({
                             x: bp.x + swayX, y: bp.y + swayY,
-                            vx: Math.cos(angle) * spd + (Math.random() - 0.5) * 0.4,
-                            vy: Math.sin(angle) * spd + (Math.random() - 0.5) * 0.4,
-                            life: 40, maxLife: 40,
+                            vx: Math.cos(angle) * spd + randomUniform(-SPARK_SPREAD_ANGLE, SPARK_SPREAD_ANGLE),
+                            vy: Math.sin(angle) * spd + randomUniform(-SPARK_SPREAD_ANGLE, SPARK_SPREAD_ANGLE),
+                            life: SPARK_LIFE, maxLife: SPARK_LIFE,
+                            size: randomUniform(SPARK_SIZE_MIN, SPARK_SIZE_MAX),
                             color: HEX_COLORS_SPARKS[Math.floor(Math.random() * HEX_COLORS_SPARKS.length)]
                         });
                     }
@@ -499,14 +571,14 @@
                 for (let i = this.sparks.length - 1; i >= 0; i--) {
                     const s = this.sparks[i];
                     s.x += s.vx; s.y += s.vy;
-                    s.vx *= 0.96; s.vy *= 0.96;
+                    s.vx *= SPARK_DRAG; s.vy *= SPARK_DRAG;
                     s.life--;
                     if (s.life <= 0) {
                         this.sparks.splice(i, 1);
                     } else {
                         ctx.globalAlpha = s.life / s.maxLife;
                         ctx.fillStyle = s.color;
-                        ctx.beginPath(); ctx.arc(s.x, s.y, 2, 0, Math.PI * 2); ctx.fill();
+                        ctx.beginPath(); ctx.arc(s.x, s.y, s.size / 2, 0, Math.PI * 2); ctx.fill();
                         ctx.globalAlpha = 1.0;
                     }
                 }
@@ -527,7 +599,9 @@
             }
         }
 
-        // ================= 播放器控制与安全音量 =================
+        function randomUniform(min, max) { return min + Math.random() * (max - min); }
+
+        // ================= 播放器控制器 =================
         const rain = new MatrixRain();
         const system = new SuperParticleSystem();
         system.setTarget(0);
@@ -538,10 +612,8 @@
 
         function applyVolume(vol) {
             try {
-                if (bgm) {
-                    bgm.volume = Math.max(0, Math.min(1, vol));
-                }
-            } catch (e) {}
+                if (bgm) bgm.volume = Math.max(0, Math.min(1, vol));
+            } catch(e) {}
         }
 
         function getGlobalFrame() {
@@ -562,9 +634,7 @@
                 acc += STATE_DURATIONS[i];
             }
             if (bgm && bgm.duration) {
-                try {
-                    bgm.currentTime = (targetFrame / TOTAL_FRAMES) * bgm.duration;
-                } catch(e) {}
+                try { bgm.currentTime = (targetFrame / TOTAL_FRAMES) * bgm.duration; } catch(e) {}
             }
         }
 
@@ -574,7 +644,6 @@
             return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
         }
 
-        // ================= UI 交互 =================
         const playerUI = document.getElementById('player-ui');
         const progressBar = document.getElementById('progress-bar');
         const currentTimeEl = document.getElementById('current-time');
@@ -596,32 +665,24 @@
         window.addEventListener('mousemove', showUI);
         window.addEventListener('touchstart', showUI, { passive: true });
 
-        // 【核心修复】：真正的音视频同步暂停/恢复
         function togglePlay() {
             if (!isStarted) return;
             isPlaying = !isPlaying;
             if (isPlaying) {
-                // 恢复播放时重新对准高精时间戳，消除跳帧
                 lastTime = performance.now();
                 if (bgm) bgm.play().catch(() => {});
                 playIcon.innerText = '❚❚';
             } else {
-                // 暂停时立刻静止声音，并呼出控制栏
                 if (bgm) bgm.pause();
                 playIcon.innerText = '▶';
                 playerUI.classList.add('active');
             }
         }
 
-        canvas.addEventListener('click', () => {
-            if (isStarted) togglePlay();
-        });
+        canvas.addEventListener('click', () => { if (isStarted) togglePlay(); });
 
         window.addEventListener('keydown', (e) => {
-            if (e.code === 'Space') {
-                e.preventDefault();
-                togglePlay();
-            }
+            if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
         });
 
         function seek(e) {
@@ -630,17 +691,15 @@
             const ratio = clickX / rect.width;
             jumpToGlobalFrame(Math.floor(ratio * TOTAL_FRAMES));
 
-            // 【核心特性】：如果暂停时拖动进度条，立刻刷新重绘目标帧定格画面！
             if (!isPlaying) {
                 ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
                 ctx.fillStyle = '#000';
                 ctx.fillRect(0, 0, WIDTH, HEIGHT);
                 rain.draw();
                 system.draw();
-
+                drawWatermark(0.03);
                 const curFrame = getGlobalFrame();
-                const progressPct = (curFrame / TOTAL_FRAMES) * 100;
-                progressBar.style.width = `${progressPct}%`;
+                progressBar.style.width = `${(curFrame / TOTAL_FRAMES) * 100}%`;
                 currentTimeEl.innerText = formatTime(curFrame / FPS);
             }
         }
@@ -676,14 +735,42 @@
             } catch (err) {}
         }
 
+        // ================= 水印绘制 =================
+        let watermarkTime = 0;
+        function drawWatermark(forceAlpha = null) {
+            watermarkTime += 0.02;
+            const normSin = (Math.sin(watermarkTime) + 1.0) / 2.0;
+            // 保持极其克制的微光亮度
+            const alpha = forceAlpha !== null ? forceAlpha : (0.015 + normSin * 0.025);
+
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            ctx.fillStyle = '#c6e2ff';
+
+            ctx.font = `${WATERMARK_FONT_SIZE_L1}px 'CustomFont', sans-serif`;
+            const w1 = ctx.measureText(WATERMARK_LINE1).width;
+            ctx.font = `${WATERMARK_FONT_SIZE_L2}px 'CustomFont', sans-serif`;
+            const w2 = ctx.measureText(WATERMARK_LINE2).width;
+
+            const maxW = Math.max(w1, w2);
+            const posX = WIDTH - maxW - WATERMARK_OFFSET_RIGHT;
+            const posY = HEIGHT - WATERMARK_OFFSET_BOTTOM - 26;
+
+            ctx.font = `${WATERMARK_FONT_SIZE_L1}px 'CustomFont', sans-serif`;
+            ctx.fillText(WATERMARK_LINE1, posX + (maxW - w1) / 2, posY);
+
+            ctx.font = `${WATERMARK_FONT_SIZE_L2}px 'CustomFont', sans-serif`;
+            ctx.fillText(WATERMARK_LINE2, posX + (maxW - w2) / 2, posY + 22);
+
+            ctx.restore();
+        }
+
         // ================= 严格锁帧主循环 =================
         const TARGET_FPS = 60, FRAME_INTERVAL = 1000 / TARGET_FPS;
         let lastTime = performance.now();
 
         function animate(currentTime = performance.now()) {
             requestAnimationFrame(animate);
-
-            // 【核心彻底修复】：一旦暂停，全场物理计算与画面刷新绝对静止，实现真正定格！
             if (!isPlaying) return;
 
             const elapsed = currentTime - lastTime;
@@ -691,11 +778,11 @@
             lastTime = currentTime - (elapsed % FRAME_INTERVAL);
 
             ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-
             timer++;
 
-            // 帧驱动音量平滑淡出
-            if (curState === 8) {
+            // 帧驱动平滑音量衰减
+            const endingIdx = FOREGROUND_TEXTS.length + 1;
+            if (curState === endingIdx) {
                 const fadeProgress = Math.min(1.0, timer / 150.0);
                 applyVolume(userVolume * (1.0 - fadeProgress));
             } else {
@@ -728,13 +815,13 @@
             }
 
             const curFrame = getGlobalFrame();
-            const progressPct = (curFrame / TOTAL_FRAMES) * 100;
-            progressBar.style.width = `${progressPct}%`;
+            progressBar.style.width = `${(curFrame / TOTAL_FRAMES) * 100}%`;
             currentTimeEl.innerText = formatTime(curFrame / FPS);
             totalTimeEl.innerText = formatTime(TOTAL_FRAMES / FPS);
 
             rain.draw();
             system.draw();
+            drawWatermark();
 
             if (fadeAlpha > 0) {
                 ctx.fillStyle = `rgba(0, 0, 0, ${Math.min(1.0, fadeAlpha)})`;
@@ -742,7 +829,7 @@
             }
         }
 
-        // ================= 启动函数 =================
+        // ================= 启动逻辑 =================
         function startApp() {
             if (isStarted) return;
             isStarted = true;
