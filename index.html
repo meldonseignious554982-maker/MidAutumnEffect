@@ -68,7 +68,6 @@
             50% { transform: scale(1.15); opacity: 1; }
         }
 
-        /* 仿 X 现代悬浮控制栏 */
         #player-ui {
             position: fixed;
             bottom: 0;
@@ -226,7 +225,7 @@
     </div>
 
     <script>
-        // ================= 参数配置（与 Python 100% 精确同步） =================
+        // ================= 参数配置（与最新版 Python 100% 精确同步） =================
         const WIDTH = 1000;
         const HEIGHT = 720;
         const FPS = 60;
@@ -248,10 +247,11 @@
         const HEX_COLORS_SPARKS = ["#c6e2ff", "#FF85A1", "#FFE066", "#FFFFFF"];
 
         const MINI_HEART_SIZE = 12;
-        const CENTER_PARTICLE_SIZE = 5;
+        const CENTER_PARTICLE_SIZE = 5; // 中心字独立精巧微雕粒子（不糊）
         const HEART_SCALE = 16;
         const HEART_THICKNESS = 3;
 
+        // 爱心扩散火花参数
         const SPARK_COUNT = 19;
         const SPARK_SIZE_MIN = 5;
         const SPARK_SIZE_MAX = 20;
@@ -266,9 +266,8 @@
         const HEART_SWAY_SPEED = 0.020;
 
         const FONT_SIZE_LARGE = 190;
-        const FONT_SIZE_CENTER = 48; // 爱心中文字号
+        const FONT_SIZE_CENTER = 48; // 爱心中文字号（统一48px）
 
-        // 你的 21 段前置诗篇序列
         const FOREGROUND_TEXTS = [
             "3", "2", "1",
             "亲爱的",
@@ -313,10 +312,10 @@
         // 水印配置
         const WATERMARK_LINE1 = "-To my love";
         const WATERMARK_LINE2 = '"kxx"';
-        const WATERMARK_FONT_SIZE_L1 = 25;
-        const WATERMARK_FONT_SIZE_L2 = 22;
-        const WATERMARK_OFFSET_RIGHT = 25;
-        const WATERMARK_OFFSET_BOTTOM = 20;
+        const WATERMARK_FONT_SIZE_L1 = 20;
+        const WATERMARK_FONT_SIZE_L2 = 17;
+        const WATERMARK_OFFSET_RIGHT = 22;
+        const WATERMARK_OFFSET_BOTTOM = 17;
 
         // ================= 2K Retina 超清画布 =================
         const canvas = document.getElementById('canvas');
@@ -327,22 +326,34 @@
         canvas.width = WIDTH * DPR;
         canvas.height = HEIGHT * DPR;
 
+        // 【核心工具】：原生 Canvas 矢量小爱心绘制器（彻底替代圆点！）
+        function drawMiniHeart(c, x, y, size, color, alpha = 1.0) {
+            c.save();
+            c.globalAlpha = alpha;
+            c.fillStyle = color;
+            c.beginPath();
+            const r = size / 4.0;
+            // 左上半心
+            c.arc(x - r, y - r * 0.8, r, Math.PI, 0, false);
+            // 右上半心
+            c.arc(x + r, y - r * 0.8, r, Math.PI, 0, false);
+            // 下尖角
+            c.lineTo(x, y + size * 0.55);
+            c.closePath();
+            c.fill();
+            c.restore();
+        }
+
         function createHeartCanvas(size, color) {
             const hCanvas = document.createElement('canvas');
             hCanvas.width = size * DPR;
             hCanvas.height = size * DPR;
             const hCtx = hCanvas.getContext('2d');
             hCtx.scale(DPR, DPR);
-            hCtx.fillStyle = color;
-            const r = size / 4;
-            hCtx.beginPath();
-            hCtx.arc(r, r, r, Math.PI, 0, false);
-            hCtx.arc(3 * r, r, r, Math.PI, 0, false);
-            hCtx.lineTo(size / 2, size);
-            hCtx.closePath();
-            hCtx.fill();
+            drawMiniHeart(hCtx, size / 2, size / 2 - 1, size, color, 1.0);
             return hCanvas;
         }
+
         const heartTexture = createHeartCanvas(MINI_HEART_SIZE, HEX_COLOR_HEART);
         const centerTextTexture = createHeartCanvas(CENTER_PARTICLE_SIZE, HEX_COLOR_CENTER_TEXT);
 
@@ -492,8 +503,10 @@
                     this.particles.forEach(p => {
                         const angle = Math.atan2(p.y - (HEIGHT / 2 - 25), p.x - WIDTH / 2) + (Math.random() - 0.5) * 0.8;
                         const spd = 1.5 + Math.random() * 3.5;
-                        p.vx = Math.cos(angle) * spd; p.vy = Math.sin(angle) * spd;
-                        p.alpha = 255.0; p.decay = 1.2 + Math.random() * 1.6;
+                        p.vx = Math.cos(angle) * spd;
+                        p.vy = Math.sin(angle) * spd;
+                        p.alpha = 255.0;
+                        p.decay = 1.2 + Math.random() * 1.6;
                         p.type = 'stardust';
                         p.color = HEX_COLORS_SPARKS[Math.floor(Math.random() * HEX_COLORS_SPARKS.length)];
                     });
@@ -503,7 +516,9 @@
                 while (this.particles.length < targets.length) {
                     this.particles.push({ x: Math.random() * WIDTH, y: Math.random() * HEIGHT, type: 'normal' });
                 }
-                if (this.particles.length > targets.length) this.particles = this.particles.slice(0, targets.length);
+                if (this.particles.length > targets.length) {
+                    this.particles = this.particles.slice(0, targets.length);
+                }
 
                 targets.sort(() => Math.random() - 0.5);
                 targets.forEach((pt, i) => {
@@ -552,6 +567,7 @@
                     });
                 }
 
+                // 2. 爱心扩散火花生成
                 if (this.isHeartMode && this.heartBorderPoints.length > 0) {
                     for (let i = 0; i < SPARK_COUNT; i++) {
                         const bp = this.heartBorderPoints[Math.floor(Math.random() * this.heartBorderPoints.length)];
@@ -568,6 +584,7 @@
                     }
                 }
 
+                // 【核心彻底修复】：火花绘制由原先的圆圈换成真正的矢量小爱心！
                 for (let i = this.sparks.length - 1; i >= 0; i--) {
                     const s = this.sparks[i];
                     s.x += s.vx; s.y += s.vy;
@@ -576,10 +593,9 @@
                     if (s.life <= 0) {
                         this.sparks.splice(i, 1);
                     } else {
-                        ctx.globalAlpha = s.life / s.maxLife;
-                        ctx.fillStyle = s.color;
-                        ctx.beginPath(); ctx.arc(s.x, s.y, s.size / 2, 0, Math.PI * 2); ctx.fill();
-                        ctx.globalAlpha = 1.0;
+                        const alpha = s.life / s.maxLife;
+                        // 这里直接调用专属爱心绘制器，向外喷射漫天小爱心！
+                        drawMiniHeart(ctx, s.x, s.y, s.size, s.color, alpha);
                     }
                 }
 
@@ -697,7 +713,7 @@
                 ctx.fillRect(0, 0, WIDTH, HEIGHT);
                 rain.draw();
                 system.draw();
-                drawWatermark(0.03);
+                drawWatermark(0.02);
                 const curFrame = getGlobalFrame();
                 progressBar.style.width = `${(curFrame / TOTAL_FRAMES) * 100}%`;
                 currentTimeEl.innerText = formatTime(curFrame / FPS);
@@ -735,13 +751,13 @@
             } catch (err) {}
         }
 
-        // ================= 水印绘制 =================
+        // ================= 双行专属水印绘制 =================
         let watermarkTime = 0;
         function drawWatermark(forceAlpha = null) {
             watermarkTime += 0.02;
             const normSin = (Math.sin(watermarkTime) + 1.0) / 2.0;
-            // 保持极其克制的微光亮度
-            const alpha = forceAlpha !== null ? forceAlpha : (0.015 + normSin * 0.025);
+            // 极低调微光（对应 Python 的 Alpha 2~5 级别）
+            const alpha = forceAlpha !== null ? forceAlpha : (0.010 + normSin * 0.015);
 
             ctx.save();
             ctx.globalAlpha = alpha;
@@ -754,13 +770,13 @@
 
             const maxW = Math.max(w1, w2);
             const posX = WIDTH - maxW - WATERMARK_OFFSET_RIGHT;
-            const posY = HEIGHT - WATERMARK_OFFSET_BOTTOM - 26;
+            const posY = HEIGHT - WATERMARK_OFFSET_BOTTOM - 24;
 
             ctx.font = `${WATERMARK_FONT_SIZE_L1}px 'CustomFont', sans-serif`;
             ctx.fillText(WATERMARK_LINE1, posX + (maxW - w1) / 2, posY);
 
             ctx.font = `${WATERMARK_FONT_SIZE_L2}px 'CustomFont', sans-serif`;
-            ctx.fillText(WATERMARK_LINE2, posX + (maxW - w2) / 2, posY + 22);
+            ctx.fillText(WATERMARK_LINE2, posX + (maxW - w2) / 2, posY + 20);
 
             ctx.restore();
         }
