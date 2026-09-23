@@ -21,11 +21,13 @@
             height: 100%;
             overflow: hidden;
             background-color: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
             font-family: 'CustomFont', -apple-system, sans-serif;
             -webkit-font-smoothing: antialiased;
         }
 
-        /* 视口外层主容器 */
         #app-container {
             width: 100%;
             height: 100%;
@@ -38,7 +40,6 @@
             transition: transform 0.3s ease;
         }
 
-        /* 【核心】：手机竖屏时点击按钮强制 90 度横屏影院模式 */
         #app-container.force-landscape {
             position: fixed !important;
             top: 50% !important;
@@ -213,7 +214,6 @@
         <div class="start-text">点击开启中秋祝福</div>
     </div>
 
-    <!-- 包装外层，支持 90 度无缝旋转横屏 -->
     <div id="app-container">
         <canvas id="canvas"></canvas>
 
@@ -239,7 +239,6 @@
                     </div>
                 </div>
                 <div class="controls-right">
-                    <!-- 智能横屏/全屏切换按钮 -->
                     <button class="btn" onclick="toggleLandscapeMode()" title="切换横屏/全屏">
                         <span id="fullscreen-icon">⛶</span>
                     </button>
@@ -340,17 +339,19 @@
         const WATERMARK_OFFSET_RIGHT = 22;
         const WATERMARK_OFFSET_BOTTOM = 17;
 
-        // ================= 2K 超清画布 =================
+        // ================= 手机端轻量自适应 DPR（消除 GPU 过热卡顿） =================
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
         const bgm = document.getElementById('bgm');
 
-        const DPR = Math.max(window.devicePixelRatio || 1, 2.0);
+        const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+        // 手机端限制在 1.5 倍高精度，电脑端保持 2.0 倍，完美兼顾画质与流畅度
+        const DPR = isMobile ? Math.min(window.devicePixelRatio || 1, 1.5) : Math.min(window.devicePixelRatio || 1, 2.0);
         canvas.width = WIDTH * DPR;
         canvas.height = HEIGHT * DPR;
 
-        function drawMiniHeart(c, x, y, size, color, alpha = 1.0) {
-            c.save();
+        // 轻量级矢量爱心绘制（无需 save/restore 内存切换，极度流畅）
+        function drawMiniHeartPath(c, x, y, size, color, alpha = 1.0) {
             c.globalAlpha = alpha;
             c.fillStyle = color;
             c.beginPath();
@@ -360,7 +361,6 @@
             c.lineTo(x, y + size * 0.55);
             c.closePath();
             c.fill();
-            c.restore();
         }
 
         function createHeartCanvas(size, color) {
@@ -369,14 +369,14 @@
             hCanvas.height = size * DPR;
             const hCtx = hCanvas.getContext('2d');
             hCtx.scale(DPR, DPR);
-            drawMiniHeart(hCtx, size / 2, size / 2 - 1, size, color, 1.0);
+            drawMiniHeartPath(hCtx, size / 2, size / 2 - 1, size, color, 1.0);
             return hCanvas;
         }
 
         const heartTexture = createHeartCanvas(MINI_HEART_SIZE, HEX_COLOR_HEART);
         const centerTextTexture = createHeartCanvas(CENTER_PARTICLE_SIZE, HEX_COLOR_CENTER_TEXT);
 
-        // ================= 背景代码雨 =================
+        // ================= 代码雨 =================
         class MatrixRain {
             constructor() {
                 this.cols = Math.floor(WIDTH / MATRIX_COL_SPACING);
@@ -386,6 +386,7 @@
                 this.colChars = Array.from({ length: this.cols }, () => MATRIX_CHARS[Math.floor(Math.random() * MATRIX_CHARS.length)]);
             }
             draw() {
+                ctx.globalAlpha = 1.0;
                 ctx.fillStyle = `rgba(0, 0, 0, ${FADE_TRAIL_ALPHA})`;
                 ctx.fillRect(0, 0, WIDTH, HEIGHT);
                 ctx.font = `${FONT_SIZE_MATRIX}px 'CustomFont', sans-serif`;
@@ -532,7 +533,9 @@
                 while (this.particles.length < targets.length) {
                     this.particles.push({ x: Math.random() * WIDTH, y: Math.random() * HEIGHT, type: 'normal' });
                 }
-                if (this.particles.length > targets.length) this.particles = this.particles.slice(0, targets.length);
+                if (this.particles.length > targets.length) {
+                    this.particles = this.particles.slice(0, targets.length);
+                }
 
                 targets.sort(() => Math.random() - 0.5);
                 targets.forEach((pt, i) => {
@@ -553,7 +556,7 @@
                 }
 
                 if (this.isEndingMode) {
-                    this.particles.forEach(p => {
+                    for (let p of this.particles) {
                         if (p.alpha > 0) {
                             p.x += p.vx; p.y += p.vy;
                             p.vx *= 0.985; p.vy *= 0.985;
@@ -561,11 +564,11 @@
                             ctx.globalAlpha = p.alpha / 255;
                             ctx.fillStyle = p.color;
                             ctx.beginPath(); ctx.arc(p.x, p.y, 1.5, 0, Math.PI * 2); ctx.fill();
-                            ctx.globalAlpha = 1.0;
                         }
-                    });
+                    }
                 } else {
-                    this.particles.forEach(p => {
+                    ctx.globalAlpha = 1.0;
+                    for (let p of this.particles) {
                         p.x += (p.tx - p.x) * 0.08 + (Math.random() - 0.5);
                         p.y += (p.ty - p.y) * 0.08 + (Math.random() - 0.5);
                         const fx = p.x + swayX, fy = p.y + swayY + pulse;
@@ -578,9 +581,10 @@
                             ctx.fillStyle = HEX_COLOR_FOREGROUND;
                             ctx.beginPath(); ctx.arc(fx, fy, 2.2, 0, Math.PI * 2); ctx.fill();
                         }
-                    });
+                    }
                 }
 
+                // 爱心火花发射
                 if (this.isHeartMode && this.heartBorderPoints.length > 0) {
                     for (let i = 0; i < SPARK_COUNT; i++) {
                         const bp = this.heartBorderPoints[Math.floor(Math.random() * this.heartBorderPoints.length)];
@@ -597,7 +601,7 @@
                     }
                 }
 
-                // 向外喷射小爱心火花
+                // 火花微型爱心渲染（极速无阻滞）
                 for (let i = this.sparks.length - 1; i >= 0; i--) {
                     const s = this.sparks[i];
                     s.x += s.vx; s.y += s.vy;
@@ -606,8 +610,7 @@
                     if (s.life <= 0) {
                         this.sparks.splice(i, 1);
                     } else {
-                        const alpha = s.life / s.maxLife;
-                        drawMiniHeart(ctx, s.x, s.y, s.size, s.color, alpha);
+                        drawMiniHeartPath(ctx, s.x, s.y, s.size, s.color, s.life / s.maxLife);
                     }
                 }
 
@@ -615,14 +618,13 @@
                     this.endingTimer++;
                     ctx.font = `bold ${FONT_SIZE_ENDING}px 'CustomFont', sans-serif`;
                     ctx.fillStyle = HEX_COLOR_ENDING_TEXT;
-                    this.endingCharData.forEach(item => {
+                    for (let item of this.endingCharData) {
                         if (this.endingTimer >= item.startFrame) {
                             const progress = Math.min(1.0, (this.endingTimer - item.startFrame) / 15.0);
                             ctx.globalAlpha = progress;
                             ctx.fillText(item.char, item.x, item.y - (1.0 - progress) * 4.0);
-                            ctx.globalAlpha = 1.0;
                         }
-                    });
+                    }
                 }
             }
         }
@@ -637,7 +639,7 @@
         let curState = 0, timer = 0, fadeAlpha = 0, isFadingIn = true;
         let isPlaying = false, isStarted = false;
         let userVolume = 0.5;
-        let isForcedLandscape = false; // 手机强制旋转横屏状态标记
+        let isForcedLandscape = false;
 
         function applyVolume(vol) {
             try {
@@ -715,12 +717,10 @@
             if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
         });
 
-        // 兼容旋转 90 度后的精准进度条拖拽计算
         function seek(e) {
             const rect = document.getElementById('progress-container').getBoundingClientRect();
             let ratio;
             if (isForcedLandscape) {
-                // 当处于 90 度旋转状态时，进度条沿视口的 Y 轴展开
                 const clickPos = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
                 ratio = clickPos / rect.height;
             } else {
@@ -760,24 +760,18 @@
             }
         }
 
-        // 【核心升级】：全平台真·横屏智能切换（手机竖屏直接 90 度物理级翻转展开！）
         async function toggleLandscapeMode() {
             const isPortrait = window.innerHeight > window.innerWidth;
-            
-            // 1. 如果是手机竖屏状态：执行强制 90 度旋转展开
             if (isPortrait) {
                 isForcedLandscape = !isForcedLandscape;
                 if (isForcedLandscape) {
                     appContainer.classList.add('force-landscape');
-                    // 尝试申请全屏（如果浏览器允许）
                     try { await document.documentElement.requestFullscreen(); } catch(e) {}
                 } else {
                     appContainer.classList.remove('force-landscape');
                     try { if (document.exitFullscreen) await document.exitFullscreen(); } catch(e) {}
                 }
-            } 
-            // 2. 如果本来就是横屏（电脑或手机已经横过来）：执行标准全屏切换
-            else {
+            } else {
                 try {
                     if (!document.fullscreenElement) {
                         await document.documentElement.requestFullscreen();
@@ -788,7 +782,6 @@
             }
         }
 
-        // 监听手机真实旋转（如果用户手动把手机横过来，自动恢复正常并适配）
         window.addEventListener('resize', () => {
             if (window.innerWidth > window.innerHeight && isForcedLandscape) {
                 isForcedLandscape = false;
@@ -803,7 +796,6 @@
             const normSin = (Math.sin(watermarkTime) + 1.0) / 2.0;
             const alpha = forceAlpha !== null ? forceAlpha : (0.010 + normSin * 0.015);
 
-            ctx.save();
             ctx.globalAlpha = alpha;
             ctx.fillStyle = '#c6e2ff';
 
@@ -821,12 +813,11 @@
 
             ctx.font = `${WATERMARK_FONT_SIZE_L2}px 'CustomFont', sans-serif`;
             ctx.fillText(WATERMARK_LINE2, posX + (maxW - w2) / 2, posY + 20);
-
-            ctx.restore();
         }
 
-        // ================= 严格锁帧主循环 =================
-        const TARGET_FPS = 60, FRAME_INTERVAL = 1000 / TARGET_FPS;
+        // ================= 【核心】：120Hz/180Hz 高刷屏平滑容差锁帧算法 =================
+        const TARGET_FPS = 60;
+        const FRAME_INTERVAL = 1000 / TARGET_FPS; // 16.66ms
         let lastTime = performance.now();
 
         function animate(currentTime = performance.now()) {
@@ -834,13 +825,13 @@
             if (!isPlaying) return;
 
             const elapsed = currentTime - lastTime;
-            if (elapsed < FRAME_INTERVAL) return;
+            // 关键优化：加入 3.5ms 的容差窗口，彻底杜绝 120Hz/180Hz 屏幕的偶发错位跳帧（消灭果冻感！）
+            if (elapsed < FRAME_INTERVAL - 3.5) return;
             lastTime = currentTime - (elapsed % FRAME_INTERVAL);
 
             ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
             timer++;
 
-            // 帧驱动平滑音量衰减
             const endingIdx = FOREGROUND_TEXTS.length + 1;
             if (curState === endingIdx) {
                 const fadeProgress = Math.min(1.0, timer / 150.0);
@@ -884,12 +875,13 @@
             drawWatermark();
 
             if (fadeAlpha > 0) {
-                ctx.fillStyle = `rgba(0, 0, 0, ${Math.min(1.0, fadeAlpha)})`;
+                ctx.globalAlpha = Math.min(1.0, fadeAlpha);
+                ctx.fillStyle = '#000000';
                 ctx.fillRect(0, 0, WIDTH, HEIGHT);
             }
         }
 
-        // ================= 启动逻辑 =================
+        // ================= 启动逻辑与微信音频预热 =================
         function startApp() {
             if (isStarted) return;
             isStarted = true;
@@ -911,6 +903,11 @@
             lastTime = performance.now();
             requestAnimationFrame(animate);
         }
+
+        // 微信内核音频专属就绪通道
+        document.addEventListener('WeixinJSBridgeReady', () => {
+            if (bgm) bgm.load();
+        }, false);
 
         const overlayEl = document.getElementById('start-overlay');
         overlayEl.addEventListener('click', startApp);
