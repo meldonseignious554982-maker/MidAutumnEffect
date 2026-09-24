@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>中秋快乐</title>
 
-    <!-- 【核心网络优化】：顶级优先级预拉取音频与字体，极大加速手机端缓冲，消除静音等待 -->
     <link rel="preload" href="bgm.mp3" as="audio" type="audio/mpeg">
     <link rel="preload" href="ty.ttf" as="font" type="font/ttf" crossorigin="anonymous">
 
@@ -13,7 +12,7 @@
         @font-face {
             font-family: 'CustomFont';
             src: url('ty.ttf') format('truetype');
-            font-display: swap; /* 优化字体加载渲染 */
+            font-display: swap;
         }
         * {
             margin: 0;
@@ -46,7 +45,6 @@
             transition: transform 0.3s ease;
         }
 
-        /* 手机竖屏点击按钮强制 90 度横屏影院模式（成熟稳定版） */
         #app-container.force-landscape {
             position: fixed !important;
             top: 50% !important;
@@ -97,7 +95,6 @@
             50% { transform: scale(1.15); opacity: 1; }
         }
 
-        /* 仿 X 现代悬浮控制栏 */
         #player-ui {
             position: absolute;
             bottom: 0;
@@ -258,7 +255,7 @@
     <audio id="bgm" src="bgm.mp3" loop preload="auto"></audio>
 
     <script>
-        // ================= 参数配置（与 VS 100% 精确一致） =================
+        // ================= 参数配置（与最新版 Python 100% 精确同步） =================
         const WIDTH = 1000;
         const HEIGHT = 720;
         const FPS = 60;
@@ -284,6 +281,7 @@
         const HEART_SCALE = 16;
         const HEART_THICKNESS = 3;
 
+        // 与 Python 完全一致的扩散火花参数
         const SPARK_COUNT = 19;
         const SPARK_SIZE_MIN = 5;
         const SPARK_SIZE_MAX = 20;
@@ -298,7 +296,7 @@
         const HEART_SWAY_SPEED = 0.020;
 
         const FONT_SIZE_LARGE = 190;
-        const FONT_SIZE_CENTER = 48; // 爱心中文字号
+        const FONT_SIZE_CENTER = 48;
 
         const FOREGROUND_TEXTS = [
             "3", "2", "1",
@@ -329,8 +327,8 @@
             150, 150, 155, 155, 135, 140, 150
         ];
 
-        const TARGET_TOTAL_SECONDS = 77; // 1分17秒
-        const TARGET_TOTAL_FRAMES = TARGET_TOTAL_SECONDS * FPS; // 4620 帧
+        const TARGET_TOTAL_SECONDS = 77;
+        const TARGET_TOTAL_FRAMES = TARGET_TOTAL_SECONDS * FPS;
 
         const ENDING_TEXT = "今夜月明人尽望\n我的秋思只落你身上";
         const FONT_SIZE_ENDING = 54;
@@ -341,13 +339,13 @@
         const STATE_DURATIONS = [...FOREGROUND_DURATIONS, HEART_DURATION, ENDING_DURATION];
         const TOTAL_FRAMES = TARGET_TOTAL_FRAMES;
 
-        // 水印配置
+        // 水印专属配置（完全对应你的微调）
         const WATERMARK_LINE1 = "-To my love";
         const WATERMARK_LINE2 = '"kxx"';
-        const WATERMARK_FONT_SIZE_L1 = 20;
-        const WATERMARK_FONT_SIZE_L2 = 17;
-        const WATERMARK_OFFSET_RIGHT = 22;
-        const WATERMARK_OFFSET_BOTTOM = 17;
+        const WATERMARK_FONT_SIZE_L1 = 18;
+        const WATERMARK_FONT_SIZE_L2 = 15;
+        const WATERMARK_OFFSET_RIGHT = 20;
+        const WATERMARK_OFFSET_BOTTOM = 15;
 
         // ================= 2K Retina 超清画布 =================
         const canvas = document.getElementById('canvas');
@@ -358,8 +356,7 @@
         canvas.width = WIDTH * DPR;
         canvas.height = HEIGHT * DPR;
 
-        function drawMiniHeart(c, x, y, size, color, alpha = 1.0) {
-            c.save();
+        function drawMiniHeartPath(c, x, y, size, color, alpha = 1.0) {
             c.globalAlpha = alpha;
             c.fillStyle = color;
             c.beginPath();
@@ -369,23 +366,32 @@
             c.lineTo(x, y + size * 0.55);
             c.closePath();
             c.fill();
-            c.restore();
         }
 
         function createHeartCanvas(size, color) {
             const hCanvas = document.createElement('canvas');
-            hCanvas.width = size * DPR;
-            hCanvas.height = size * DPR;
+            const actualSize = size * DPR;
+            hCanvas.width = actualSize;
+            hCanvas.height = actualSize;
             const hCtx = hCanvas.getContext('2d');
             hCtx.scale(DPR, DPR);
-            drawMiniHeart(hCtx, size / 2, size / 2 - 1, size, color, 1.0);
+            drawMiniHeartPath(hCtx, size / 2, size / 2 - 1, size, color, 1.0);
             return hCanvas;
         }
 
         const heartTexture = createHeartCanvas(MINI_HEART_SIZE, HEX_COLOR_HEART);
         const centerTextTexture = createHeartCanvas(CENTER_PARTICLE_SIZE, HEX_COLOR_CENTER_TEXT);
 
-        // ================= 背景代码雨 =================
+        // 预烘焙火花爱心贴图
+        const sparkTextureMap = {};
+        HEX_COLORS_SPARKS.forEach(col => {
+            sparkTextureMap[col] = [6, 10, 14, 18, 20].map(sz => ({
+                size: sz,
+                canvas: createHeartCanvas(sz, col)
+            }));
+        });
+
+        // ================= 代码雨 =================
         class MatrixRain {
             constructor() {
                 this.cols = Math.floor(WIDTH / MATRIX_COL_SPACING);
@@ -395,6 +401,7 @@
                 this.colChars = Array.from({ length: this.cols }, () => MATRIX_CHARS[Math.floor(Math.random() * MATRIX_CHARS.length)]);
             }
             draw() {
+                ctx.globalAlpha = 1.0;
                 ctx.fillStyle = `rgba(0, 0, 0, ${FADE_TRAIL_ALPHA})`;
                 ctx.fillRect(0, 0, WIDTH, HEIGHT);
                 ctx.font = `${FONT_SIZE_MATRIX}px 'CustomFont', sans-serif`;
@@ -413,7 +420,7 @@
             }
         }
 
-        // ================= 粒子采样辅助 =================
+        // ================= 粒子采样 =================
         function sampleText(text, fontSize, step) {
             const offCanvas = document.createElement('canvas');
             const offCtx = offCanvas.getContext('2d');
@@ -445,7 +452,7 @@
             else if (cleanLen >= 8) targetSize = Math.floor(FONT_SIZE_LARGE * 0.52);
             else if (cleanLen >= 7) targetSize = Math.floor(FONT_SIZE_LARGE * 0.60);
             else if (cleanLen >= 5) targetSize = Math.floor(FONT_SIZE_LARGE * 0.72);
-            else if (cleanLen === 4) targetSize = Math.floor(FONT_SIZE_LARGE * 0.85);
+            else if (cleanLen == 4) targetSize = Math.floor(FONT_SIZE_LARGE * 0.85);
 
             return sampleText(text, targetSize, 4);
         }
@@ -526,7 +533,10 @@
                     const ptsSub = sampleText("不止中秋", FONT_SIZE_CENTER, 3);
                     ptsSub.forEach(pt => targets.push({ x: pt.x, y: pt.y + 28, type: 'text' }));
                 } else if (this.isEndingMode) {
+                    // 【优化点1】：进入落幕瞬间清空残留火花，避免与 1300 颗星尘冲突卡顿！
+                    this.sparks = [];
                     this.prepareEndingText();
+
                     this.particles.forEach(p => {
                         const angle = Math.atan2(p.y - (HEIGHT / 2 - 25), p.x - WIDTH / 2) + (Math.random() - 0.5) * 0.8;
                         const spd = 1.5 + Math.random() * 3.5;
@@ -563,20 +573,21 @@
                     this.heartPulse += 0.08;
                 }
 
+                // 【优化点2】：星尘解体采用 GPU 极速闪光核，彻底告别 1300 次复杂圆弧计算卡顿！
                 if (this.isEndingMode) {
-                    this.particles.forEach(p => {
+                    for (let p of this.particles) {
                         if (p.alpha > 0) {
                             p.x += p.vx; p.y += p.vy;
                             p.vx *= 0.985; p.vy *= 0.985;
                             p.alpha = Math.max(0, p.alpha - p.decay);
                             ctx.globalAlpha = p.alpha / 255;
                             ctx.fillStyle = p.color;
-                            ctx.beginPath(); ctx.arc(p.x, p.y, 1.5, 0, Math.PI * 2); ctx.fill();
-                            ctx.globalAlpha = 1.0;
+                            ctx.fillRect(p.x - 1.2, p.y - 1.2, 2.5, 2.5);
                         }
-                    });
+                    }
                 } else {
-                    this.particles.forEach(p => {
+                    ctx.globalAlpha = 1.0;
+                    for (let p of this.particles) {
                         p.x += (p.tx - p.x) * 0.08 + (Math.random() - 0.5);
                         p.y += (p.ty - p.y) * 0.08 + (Math.random() - 0.5);
                         const fx = p.x + swayX, fy = p.y + swayY + pulse;
@@ -589,25 +600,30 @@
                             ctx.fillStyle = HEX_COLOR_FOREGROUND;
                             ctx.beginPath(); ctx.arc(fx, fy, 2.2, 0, Math.PI * 2); ctx.fill();
                         }
-                    });
+                    }
                 }
 
+                // 2. 爱心扩散火花生成
                 if (this.isHeartMode && this.heartBorderPoints.length > 0) {
                     for (let i = 0; i < SPARK_COUNT; i++) {
                         const bp = this.heartBorderPoints[Math.floor(Math.random() * this.heartBorderPoints.length)];
                         const angle = Math.atan2(bp.y - (HEIGHT / 2 - 25), bp.x - WIDTH / 2);
                         const spd = randomUniform(SPARK_SPEED_MIN, SPARK_SPEED_MAX);
+                        const col = HEX_COLORS_SPARKS[Math.floor(Math.random() * HEX_COLORS_SPARKS.length)];
+                        const texList = sparkTextureMap[col];
+                        const texObj = texList[Math.floor(Math.random() * texList.length)];
+
                         this.sparks.push({
                             x: bp.x + swayX, y: bp.y + swayY,
                             vx: Math.cos(angle) * spd + randomUniform(-SPARK_SPREAD_ANGLE, SPARK_SPREAD_ANGLE),
                             vy: Math.sin(angle) * spd + randomUniform(-SPARK_SPREAD_ANGLE, SPARK_SPREAD_ANGLE),
                             life: SPARK_LIFE, maxLife: SPARK_LIFE,
-                            size: randomUniform(SPARK_SIZE_MIN, SPARK_SIZE_MAX),
-                            color: HEX_COLORS_SPARKS[Math.floor(Math.random() * HEX_COLORS_SPARKS.length)]
+                            tex: texObj
                         });
                     }
                 }
 
+                // 火花显存极速贴图渲染
                 for (let i = this.sparks.length - 1; i >= 0; i--) {
                     const s = this.sparks[i];
                     s.x += s.vx; s.y += s.vy;
@@ -616,23 +632,24 @@
                     if (s.life <= 0) {
                         this.sparks.splice(i, 1);
                     } else {
-                        const alpha = s.life / s.maxLife;
-                        drawMiniHeart(ctx, s.x, s.y, s.size, s.color, alpha);
+                        ctx.globalAlpha = s.life / s.maxLife;
+                        const sz = s.tex.size;
+                        ctx.drawImage(s.tex.canvas, s.x - sz / 2, s.y - sz / 2, sz, sz);
                     }
                 }
+                ctx.globalAlpha = 1.0;
 
                 if (this.isEndingMode) {
                     this.endingTimer++;
                     ctx.font = `bold ${FONT_SIZE_ENDING}px 'CustomFont', sans-serif`;
                     ctx.fillStyle = HEX_COLOR_ENDING_TEXT;
-                    this.endingCharData.forEach(item => {
+                    for (let item of this.endingCharData) {
                         if (this.endingTimer >= item.startFrame) {
                             const progress = Math.min(1.0, (this.endingTimer - item.startFrame) / 15.0);
                             ctx.globalAlpha = progress;
                             ctx.fillText(item.char, item.x, item.y - (1.0 - progress) * 4.0);
-                            ctx.globalAlpha = 1.0;
                         }
-                    });
+                    }
                 }
             }
         }
@@ -826,7 +843,7 @@
             ctx.restore();
         }
 
-        // ================= 【完全恢复原版】：稳定、绝对不加速的 60 FPS 锁帧时钟 =================
+        // ================= 严格锁帧主循环（原版基准，绝无二倍速） =================
         const TARGET_FPS = 60, FRAME_INTERVAL = 1000 / TARGET_FPS;
         let lastTime = performance.now();
 
@@ -841,7 +858,6 @@
             ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
             timer++;
 
-            // 帧驱动平滑音量衰减
             const endingIdx = FOREGROUND_TEXTS.length + 1;
             if (curState === endingIdx) {
                 const fadeProgress = Math.min(1.0, timer / 150.0);
@@ -913,11 +929,8 @@
             requestAnimationFrame(animate);
         }
 
-        // 页面打开瞬间立即静默建立音频数据流缓冲，消除网络延迟
         window.addEventListener('DOMContentLoaded', () => {
-            if (bgm) {
-                bgm.load();
-            }
+            if (bgm) bgm.load();
         });
 
         const overlayEl = document.getElementById('start-overlay');
